@@ -1,0 +1,11 @@
+{
+  "servers": [
+    {
+      "name": "text_tools",
+      "command": "node",
+      "args": ["examples/mcp/text-tools/server.mjs"],
+      "target": "cloud_office",
+      "timeout_seconds": 10
+    }
+  ]
+}

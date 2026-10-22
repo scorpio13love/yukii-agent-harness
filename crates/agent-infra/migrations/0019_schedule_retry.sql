@@ -1,0 +1,2 @@
+ALTER TABLE scheduled_tasks ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE scheduled_tasks ADD COLUMN max_attempts INTEGER NOT NULL DEFAULT 3;

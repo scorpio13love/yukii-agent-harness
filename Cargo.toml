@@ -1,0 +1,52 @@
+[workspace]
+members = ["crates/*", "services/api-server", "services/desktop-executor", "services/desktop-host", "services/cua-sidecar"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+yukii-contracts = { path = "crates/contracts" }
+yukii-agent-core = { path = "crates/agent-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+uuid = { version = "1", features = ["v4", "serde"] }
+axum = "0.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "time", "sync", "process", "io-util"] }
+rusqlite = { version = "0.38", features = ["bundled"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+yukii-model-gateway = { path = "crates/model-gateway" }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+async-trait = "0.1"
+async-stream = "0.3"
+tokio-util = { version = "0.7", features = ["rt"] }
+dotenvy = "0.15"
+
+yukii-agent-domain = { path = "crates/agent-domain" }
+yukii-agent-ports = { path = "crates/agent-ports" }
+yukii-agent-infra = { path = "crates/agent-infra" }
+yukii-tool-gateway = { path = "crates/tool-gateway" }
+yukii-agent-runtime = { path = "crates/agent-runtime" }
+
+sha2 = "0.10"
+libc = "0.2"
+base64 = "0.22"
+futures-util = "0.3"
+tokio-tungstenite = { version = "0.28", default-features = false, features = ["connect", "handshake"] }
+url = "2"
+yukii-desktop-executor = { path = "crates/desktop-executor" }
+yukii-desktop-transport = { path = "crates/desktop-transport" }
+yukii-agent-rag = { path = "crates/agent-rag" }
+yukii-agent-extensions = { path = "crates/agent-extensions" }
+yukii-sandbox-docker = { path = "crates/sandbox-docker" }
+yukii-desktop-tools = { path = "crates/desktop-tools" }
+yukii-desktop-host = { path = "services/desktop-host" }
+yukii-browser-use = { path = "crates/browser-use" }
+yukii-mcp-client = { path = "crates/mcp-client" }
+yukii-office-tools = { path = "crates/office-tools" }
+yukii-agent-memory = { path = "crates/memory" }

@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "plugins": [
+    {
+      "id": "office_writing",
+      "version": "1.0.0",
+      "name": "办公写作流程",
+      "description": "第一方技能包：项目简报、周报和资料引用检查。",
+      "package": "packages/office_writing-1.0.0.json",
+      "sha256": "7a236326a120e11e2dca84c76dedbbf20bf01871f99aeed2999b9f45848d52b8"
+    },
+    {
+      "id": "text_utilities",
+      "version": "1.0.0",
+      "name": "隔离文本统计",
+      "description": "第一方容器工具包：统计文本字符数、行数与单词数。",
+      "package": "packages/text_utilities-1.0.0.json",
+      "sha256": "cb52117072fd704e06e30f67086d385ea6ccb99837eb80b5254d68f8c74658fc"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "id": "ts_text_tool",
+  "version": "1.0.0",
+  "name": "TypeScript 文本统计",
+  "description": "示例：用 TypeScript 写的容器工具。",
+  "permissions": ["sandbox_compute"],
+  "image": "ghcr.io/your-account/yukii-ts-text-tool@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "tools": [
+    {
+      "name": "text_stats",
+      "description": "统计字符、非空白字符、单词和行数。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string", "maxLength": 65536 },
+          "mode": { "type": "string", "enum": ["all", "summary"] }
+        },
+        "required": ["text"],
+        "additionalProperties": false
+      },
+      "command": ["/usr/local/bin/node", "/app/dist/index.js"]
+    }
+  ],
+  "skills": []
+}

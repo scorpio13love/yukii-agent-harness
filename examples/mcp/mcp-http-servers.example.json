@@ -1,0 +1,11 @@
+{
+  "servers": [
+    {
+      "name": "text_tools_http",
+      "transport": "streamable-http",
+      "url": "http://127.0.0.1:3333/mcp",
+      "target": "cloud_office",
+      "timeout_seconds": 10
+    }
+  ]
+}

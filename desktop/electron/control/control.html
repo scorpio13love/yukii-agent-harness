@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src data:; style-src 'self'; script-src 'self'"
+    />
+    <title>Yukii CUA Console</title>
+    <link rel="stylesheet" href="control.css" />
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>Yukii CUA Console</h1>
+        <p class="muted">受信控制台：只在这里暴露 sidecar；普通网页工作台没有 CUA API。</p>
+      </div>
+      <button id="refresh">刷新权限/窗口</button>
+    </header>
+
+    <section class="grid">
+      <div class="card">
+        <h2>会话</h2>
+        <dl>
+          <dt>权限</dt>
+          <dd id="permissions">未读取</dd>
+          <dt>选择窗口</dt>
+          <dd id="picked">未选择</dd>
+          <dt>任务</dt>
+          <dd id="task">未开始</dd>
+          <dt>状态</dt>
+          <dd id="status">就绪</dd>
+        </dl>
+        <div class="row">
+          <button id="pick">选择窗口</button>
+          <button id="begin">允许控制</button>
+          <button id="observe">观察</button>
+          <button id="pause">暂停</button>
+          <button id="resume">恢复</button>
+          <button id="end" class="danger">结束</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>窗口列表</h2>
+        <div id="windows" class="list muted">未读取</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>实时观察</h2>
+      <div class="preview">
+        <img id="screenshot" alt="受控窗口截图" />
+        <div id="empty" class="empty">先选择窗口、允许控制，再点“观察”。</div>
+      </div>
+      <div class="row">
+        <label for="text">输入文本</label>
+        <input id="text" type="text" maxlength="256" placeholder="向选中的元素输入" />
+      </div>
+      <div id="elements" class="elements muted">没有元素快照</div>
+    </section>
+    <script src="control.js"></script>
+  </body>
+</html>

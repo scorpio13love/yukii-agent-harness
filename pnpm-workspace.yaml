@@ -1,0 +1,9 @@
+packages:
+  - apps/*
+  - packages/*
+  - desktop/electron
+allowBuilds:
+  esbuild: true
+  electron: true
+  electron-winstaller: false
+storeDir: .tools/pnpm-store

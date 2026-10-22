@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src data:; style-src 'self'; script-src 'self'"
+    />
+    <title>Computer Use</title>
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <div class="brand-copy">
+          <p class="eyebrow">LIVE DESKTOP</p>
+          <h1>Computer Use</h1>
+        </div>
+      </div>
+      <button id="close" class="icon" aria-label="关闭">×</button>
+    </header>
+
+    <main class="panel-main">
+      <p id="status" class="status-line">等待任务…</p>
+
+      <section class="app-card">
+        <div id="app-avatar" class="app-avatar">Y</div>
+        <div class="app-copy">
+          <div id="app" class="app-name">未选择应用</div>
+          <div id="task-state" class="app-state">等待任务</div>
+        </div>
+      </section>
+
+      <section class="viewport">
+        <img id="screenshot" alt="受控窗口实时画面" />
+        <div id="empty" class="empty">
+          <span class="empty-icon">◌</span>
+          <p>任务运行时显示实时画面</p>
+        </div>
+        <div id="live-pill" class="live-pill" hidden>
+          <span class="live-dot"></span>
+          <span id="live-text">LIVE</span>
+        </div>
+        <span class="stream-label">SCStream</span>
+      </section>
+
+      <footer class="meta-grid">
+        <div class="meta-item">
+          <span>分辨率</span>
+          <b id="meta-resolution">—</b>
+        </div>
+        <div class="meta-item">
+          <span>帧率</span>
+          <b id="meta-fps">—</b>
+        </div>
+        <div class="meta-item">
+          <span>帧数</span>
+          <b id="meta-frame">—</b>
+        </div>
+      </footer>
+    </main>
+    <script src="panel.js"></script>
+  </body>
+</html>

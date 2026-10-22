@@ -1,0 +1,24 @@
+[package]
+name = "yukii-desktop-executor-service"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+yukii-contracts.workspace = true
+yukii-agent-domain.workspace = true
+yukii-agent-infra.workspace = true
+yukii-agent-ports.workspace = true
+yukii-desktop-executor.workspace = true
+yukii-desktop-transport.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+serde.workspace = true
+async-trait.workspace = true
+
+[dev-dependencies]
+yukii-agent-ports.workspace = true
+uuid.workspace = true
+rusqlite.workspace = true

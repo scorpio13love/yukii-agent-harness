@@ -1,0 +1,15 @@
+[package]
+name = "yukii-agent-infra"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+yukii-contracts.workspace = true
+yukii-agent-domain.workspace = true
+yukii-agent-ports.workspace = true
+rusqlite.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+base64.workspace = true

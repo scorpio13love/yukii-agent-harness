@@ -1,0 +1,45 @@
+[package]
+name = "yukii-api-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[dependencies]
+yukii-contracts.workspace = true
+yukii-agent-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+axum.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+thiserror.workspace = true
+yukii-model-gateway.workspace = true
+tokio-util.workspace = true
+async-trait.workspace = true
+async-stream.workspace = true
+futures-util.workspace = true
+tokio-tungstenite.workspace = true
+libc.workspace = true
+url.workspace = true
+yukii-agent-ports.workspace = true
+yukii-agent-infra.workspace = true
+yukii-agent-runtime.workspace = true
+yukii-agent-rag.workspace = true
+yukii-agent-extensions.workspace = true
+yukii-sandbox-docker.workspace = true
+yukii-mcp-client.workspace = true
+yukii-office-tools.workspace = true
+yukii-agent-memory.workspace = true
+yukii-tool-gateway.workspace = true
+sha2.workspace = true
+percent-encoding = "2"
+base64.workspace = true
+tower-http = { version = "0.6", features = ["fs"] }
+cron = "0.15"
+chrono = { version = "0.4", features = ["clock"] }
+reqwest.workspace = true
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+

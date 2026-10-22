@@ -1,0 +1,25 @@
+{
+  "name": "yukii-desktop",
+  "private": true,
+  "license": "MIT",
+  "packageManager": "pnpm@11.23.0",
+  "scripts": {
+    "dev": "pnpm --filter @yukii/web dev",
+    "build": "pnpm --filter @yukii/web build",
+    "typecheck": "pnpm --filter @yukii/web typecheck",
+    "format": "prettier --write apps packages docs desktop/chromium desktop/electron examples/plugins examples/mcp tooling README.md",
+    "format:check": "prettier --check apps packages docs desktop/chromium desktop/electron examples/plugins examples/mcp tooling README.md",
+    "chromium:check": "node tooling/check-chromium.mjs",
+    "architecture:check": "node tooling/check-architecture.mjs",
+    "package:mac": "bash tooling/package-macos.sh",
+    "notarize:mac": "bash tooling/notarize-macos.sh",
+    "package:mac:unsigned": "bash tooling/package-macos.sh --unsigned",
+    "dmg:mac": "bash tooling/create-dmg.sh",
+    "verify:mac": "bash tooling/verify-macos-release.sh",
+    "start:local": "bash tooling/start-local.sh"
+  },
+  "devDependencies": {
+    "electron-builder": "^26.15.3",
+    "prettier": "^3.6.2"
+  }
+}

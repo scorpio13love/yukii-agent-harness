@@ -1,0 +1,2 @@
+ALTER TABLE tool_calls ADD COLUMN started_at INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE tool_calls ADD COLUMN finished_at INTEGER;

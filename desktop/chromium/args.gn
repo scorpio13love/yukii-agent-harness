@@ -1,0 +1,5 @@
+# macOS 开发配置；Chromium 147 checkout 核验通过后再由 gn 生成。
+is_debug = false
+is_component_build = true
+symbol_level = 1
+is_chrome_branded = false

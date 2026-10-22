@@ -1,0 +1,35 @@
+name: Quality gates
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned tools and dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.23.0 --activate
+          rustup show
+          pnpm install --frozen-lockfile
+      - name: Verify architecture and Rust
+        run: |
+          pnpm architecture:check
+          ./tooling/cargo.sh fmt --all -- --check
+          ./tooling/cargo.sh clippy --workspace --all-targets --locked -- -D warnings
+          ./tooling/cargo.sh test --workspace --locked
+      - name: Verify shared workbench
+        run: |
+          pnpm format:check
+          pnpm typecheck
+          pnpm build

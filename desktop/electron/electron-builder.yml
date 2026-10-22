@@ -1,0 +1,41 @@
+appId: com.yukii.desktop
+productName: Yukii
+copyright: Copyright © 2026 Yukii
+directories:
+  output: ../../dist/macos
+  buildResources: ../../packaging/macos
+files:
+  - main.cjs
+  - preload.cjs
+  - panel-preload.cjs
+  - control-preload.cjs
+  - cua-client.cjs
+  - local-task.cjs
+  - log.cjs
+  - offline.html
+  - product/**/*
+  - control/**/*
+  - package.json
+extraResources:
+  - from: ../../apps/web/dist
+    to: web
+  - from: ../../target/release/yukii-api-server
+    to: bin/yukii-api-server
+  - from: ../../target/release/yukii-cua-sidecar
+    to: bin/yukii-cua-sidecar
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch: [arm64]
+    - target: zip
+      arch: [arm64]
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: ../../packaging/macos/entitlements.mac.plist
+  entitlementsInherit: ../../packaging/macos/entitlements.inherit.plist
+  artifactName: ${productName}-${version}-${arch}.${ext}
+dmg:
+  title: Yukii ${version}
+  sign: true
+npmRebuild: false

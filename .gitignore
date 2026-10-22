@@ -1,0 +1,52 @@
+.DS_Store
+.tools/
+node_modules/
+.pnpm-store/
+target/
+# 忽略根目录及所有子项目的 dist 构建产物。
+dist/
+.data/
+# 运行时与测试生成的 Session 日志
+sessions/
+.env
+.env.*
+.xuqiuwendang/
+!.env.example
+desktop/chromium/checkout/
+# Chromium 源码、构建目录和下载工具不随仓库分发
+desktop/chromium/build/
+desktop/chromium/out/
+desktop/chromium/depot_tools/
+
+# 运行日志、数据库/缓存和原生构建辅助产物
+*.log
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+*.tsbuildinfo
+*.dSYM/
+*.o
+*.a
+*.swiftmodule
+*.swiftdoc
+.cache/
+coverage/
+*.dmg
+*.pkg
+
+# 开源发布时不进入仓库的内部资料
+.private-docs/
+**/__pycache__/
+
+# 面试、复盘、内部研究等仅本地保留的文档
+docs/interview*.md
+docs/**/interview*.md
+docs/*retro*.md
+docs/**/*retro*.md
+docs/*复盘*.md
+docs/**/*复盘*.md
+docs/*面试*.md
+docs/**/*面试*.md
+docs/research/
+docs/learning/

@@ -1,0 +1,14 @@
+[package]
+name = "yukii-agent-ports"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+yukii-contracts.workspace = true
+yukii-agent-domain.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+async-trait.workspace = true
+tokio-util.workspace = true

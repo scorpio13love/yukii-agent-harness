@@ -1,0 +1,2 @@
+ALTER TABLE tool_calls ADD COLUMN parent_call_id TEXT;
+ALTER TABLE tool_calls ADD COLUMN depth INTEGER NOT NULL DEFAULT 0;

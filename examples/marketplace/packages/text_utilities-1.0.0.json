@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "id": "text_utilities",
+  "version": "1.0.0",
+  "name": "隔离文本统计",
+  "description": "第一方容器工具包：统计文本字符数、行数与单词数。",
+  "permissions": [
+    "sandbox_compute"
+  ],
+  "image": "python@sha256:2d9aefe2fef018a7eb2c13064c89c71929800fd2e5dccdbf52ea5da5bb8d929a",
+  "tools": [
+    {
+      "name": "text_stats",
+      "description": "在隔离容器中计算文本字符数、行数与按空格分隔的单词数。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 10000
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "command": [
+        "/usr/local/bin/python3",
+        "-I",
+        "-c",
+        "import sys,json; text=json.load(sys.stdin)[\"text\"]; print(json.dumps({\"characters\":len(text),\"lines\":len(text.splitlines()),\"words\":len(text.split())},ensure_ascii=False))"
+      ]
+    }
+  ],
+  "skills": []
+}

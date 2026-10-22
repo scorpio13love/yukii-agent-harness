@@ -1,0 +1,35 @@
+[package]
+name = "yukii-desktop-host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+yukii-contracts.workspace = true
+yukii-agent-core.workspace = true
+yukii-agent-infra.workspace = true
+yukii-agent-ports.workspace = true
+yukii-agent-runtime.workspace = true
+yukii-model-gateway.workspace = true
+yukii-desktop-tools.workspace = true
+yukii-browser-use.workspace = true
+yukii-desktop-transport.workspace = true
+yukii-mcp-client.workspace = true
+yukii-tool-gateway.workspace = true
+async-trait.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+tracing-subscriber.workspace = true
+
+[[bin]]
+name = "yukii-desktop-host"
+path = "src/main.rs"
+
+[lib]
+name = "yukii_desktop_host"
+path = "src/lib.rs"
+
+[dev-dependencies]
+rusqlite.workspace = true

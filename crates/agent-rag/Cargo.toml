@@ -1,0 +1,15 @@
+[package]
+name = "yukii-agent-rag"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+yukii-contracts.workspace = true
+yukii-agent-ports.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+sha2.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true

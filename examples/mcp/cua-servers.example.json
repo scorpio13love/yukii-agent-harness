@@ -1,0 +1,11 @@
+{
+  "servers": [
+    {
+      "name": "cua",
+      "command": "python3",
+      "args": ["services/cua-mcp/server.py"],
+      "target": "cloud_office",
+      "timeout_seconds": 110
+    }
+  ]
+}

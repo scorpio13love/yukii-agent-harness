@@ -1,0 +1,17 @@
+{
+  "name": "@yukii/desktop",
+  "private": true,
+  "license": "MIT",
+  "productName": "Yukii",
+  "version": "0.0.0",
+  "description": "Yukii Desktop",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "node start.cjs",
+    "start:dev": "node start.cjs"
+  },
+  "devDependencies": {
+    "electron": "^44.0.0"
+  },
+  "author": "Yukii"
+}
