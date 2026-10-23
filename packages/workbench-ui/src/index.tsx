@@ -1452,7 +1452,23 @@ export function Workbench() {
                   </div>
                 ))
               ) : (
-                <p className="empty-history compact">还没有绑定项目的会话。</p>
+                <div className="empty-project">
+                  <p className="empty-history compact">还没有绑定项目的会话。</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedId) {
+                        void pickWorkspace(selectedId);
+                        return;
+                      }
+                      void chooseProjectPath().then((path) => {
+                        if (path) startWorkspaceConversation(path);
+                      });
+                    }}
+                  >
+                    {selectedId ? '将当前会话绑定到项目' : '新建项目对话'}
+                  </button>
+                </div>
               )}
               <div className="history-group-title">最近</div>
               {recentSessions.length > 0 ? (

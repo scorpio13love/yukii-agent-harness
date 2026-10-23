@@ -190,6 +190,29 @@ button:hover:not(:disabled) {
   font-size: 11px;
   padding: 2px 13px 10px;
 }
+.empty-project {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 12px 10px;
+}
+.empty-project .empty-history {
+  padding: 0;
+}
+.empty-project button {
+  flex-shrink: 0;
+  padding: 4px 7px;
+  border: 1px solid #dce5f2;
+  border-radius: 6px;
+  background: #fff;
+  color: #5574aa;
+  font-size: 10px;
+  cursor: pointer;
+}
+.empty-project button:hover {
+  background: #f0f5fd;
+}
 .history-group-title {
   padding: 18px 12px 8px;
   color: #989eaa;
