@@ -275,9 +275,14 @@ export function Workbench() {
     approvePermission,
     denyPermission,
   } = useTaskWorkspace();
+  const liveStartedAt = (() => {
+    const event = events.find((item) => item.status === 'running' || item.status === 'planning');
+    if (!event) return selected?.created_at;
+    return (event.created_at_ms || event.created_at * 1000) / 1000;
+  })();
   const thinkingSeconds = useThinkingSeconds(
     selected ? isActiveTask(selected) : false,
-    selected?.created_at,
+    liveStartedAt,
   );
   const [detailsOpen, setDetailsOpen] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
