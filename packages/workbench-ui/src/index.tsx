@@ -555,6 +555,19 @@ export function Workbench() {
       await updateGoal(text.toLowerCase() as 'pause' | 'resume' | 'clear');
       return;
     }
+    if (command === 'goal' && text.toLowerCase().startsWith('edit ')) {
+      if (!selectedId) {
+        setInfo('请先选择一个会话，再编辑它的目标。');
+        return;
+      }
+      const objective = text.slice(5).trim();
+      if (!objective) {
+        setInfo('用法：/目标 edit <新目标>');
+        return;
+      }
+      await updateGoal('edit', selectedId, objective);
+      return;
+    }
     if (command === 'goal') {
       await submit(undefined, text, undefined, 'goal', text, '/goal');
     } else {

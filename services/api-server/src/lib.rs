@@ -957,11 +957,14 @@ async fn set_session_plan(
     Json(input): Json<PlanModeInput>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let mode = database(move || {
-        let mode = state.store.set_plan_active(&id, input.active)?;
+        state.store.set_plan_active(&id, input.active)?;
         if !input.active {
             state.store.clear_plan_steps(&id)?;
         }
-        Ok::<_, RepositoryError>(mode)
+        state
+            .store
+            .session_mode(&id)?
+            .ok_or(RepositoryError::NotFound)
     })
     .await?;
     Ok(Json(serde_json::json!({"mode": mode})))
