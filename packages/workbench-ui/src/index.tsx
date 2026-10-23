@@ -1102,7 +1102,11 @@ export function Workbench() {
                           ? '等待执行'
                           : selected.status === 'waiting_for_user'
                             ? '等待确认'
-                            : 'LLM 思考中'}{' '}
+                            : selected.status === 'verifying'
+                              ? '校验中'
+                              : selected.status === 'planning'
+                                ? '规划中'
+                                : 'LLM 思考中'}{' '}
                         · {thinkingSeconds}s
                       </span>
                     </div>
