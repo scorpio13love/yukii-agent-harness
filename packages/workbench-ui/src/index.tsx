@@ -620,6 +620,9 @@ export function Workbench() {
   } | null>(null);
   const [automationOpen, setAutomationOpen] = useState(false);
   const [selectedTrace, setSelectedTrace] = useState<TrajectoryRecord | null>(null);
+  useEffect(() => {
+    setSelectedTrace(null);
+  }, [selectedId]);
   const [traceTab, setTraceTab] = useState('overview');
   const [traceQuery, setTraceQuery] = useState('');
   const [traceKind, setTraceKind] = useState('all');
