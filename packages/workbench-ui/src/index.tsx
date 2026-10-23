@@ -684,7 +684,13 @@ export function Workbench() {
   function newTask() {
     setSelectedId(null);
     setPendingWorkspacePath(null);
+    setWorkspacePrompt(null);
+    setPendingMode(null);
+    setComposerCommand(null);
     setRowMenu(null);
+    setFileDiff(null);
+    setSelectedTrace(null);
+    setView('chat');
     clearDraft();
     resetComposer();
     editor.current?.focus();
