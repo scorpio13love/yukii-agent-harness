@@ -361,10 +361,14 @@ export const httpApi = {
       method: 'POST',
       body: JSON.stringify({ objective, max_goal_rounds: maxRounds }),
     }),
-  updateSessionGoal: (id: string, action: 'pause' | 'resume' | 'complete' | 'clear') =>
+  updateSessionGoal: (
+    id: string,
+    action: 'edit' | 'pause' | 'resume' | 'complete' | 'clear',
+    objective?: string,
+  ) =>
     request(`/sessions/${encodeURIComponent(id)}/goal`, z.object({ mode: sessionModeSchema }), {
       method: 'POST',
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({ action, ...(objective ? { objective } : {}) }),
     }),
   setSessionPlan: (id: string, active: boolean) =>
     request(`/sessions/${encodeURIComponent(id)}/plan`, z.object({ mode: sessionModeSchema }), {

@@ -326,11 +326,12 @@ export function useTaskWorkspace() {
   }
 
   async function updateGoal(
-    action: 'pause' | 'resume' | 'complete' | 'clear',
+    action: 'edit' | 'pause' | 'resume' | 'complete' | 'clear',
     sessionId = selectedId,
+    objective?: string,
   ) {
     if (!sessionId) return;
-    const result = await api.updateSessionGoal(sessionId, action);
+    const result = await api.updateSessionGoal(sessionId, action, objective);
     if (sessionId === selectedId) setMode(result.mode);
   }
 

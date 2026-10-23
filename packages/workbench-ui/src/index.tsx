@@ -369,6 +369,21 @@ export function Workbench() {
       return;
     }
     const action = argument.toLowerCase();
+    if (action === 'edit' || action.startsWith('edit ')) {
+      if (!selectedId) {
+        setInfo('请先选择一个会话，再编辑它的 goal。');
+        return;
+      }
+      const objective = argument.slice(4).trim();
+      if (!objective) {
+        setInfo('用法：/goal edit <新目标>');
+        return;
+      }
+      await updateGoal('edit', selectedId, objective);
+      clearEditor();
+      setInfo('Goal 已更新。');
+      return;
+    }
     if (['pause', 'resume', 'clear', 'complete'].includes(action)) {
       if (!selectedId) {
         setInfo('请先选择一个会话，再控制它的 goal。');
@@ -1865,6 +1880,29 @@ export function Workbench() {
             )}
           </div>
         </div>
+        {mode && (mode.goal || mode.plan_active) && (
+          <div className="detail-section">
+            <span className="section-label">
+              Agent 模式 <span>{mode.goal ? 'GOAL' : 'PLAN'}</span>
+            </span>
+            {mode.goal && <p className="workspace-path">{mode.goal.objective}</p>}
+            <div className="workspace-actions">
+              {mode.goal && (
+                <button
+                  onClick={() =>
+                    void updateGoal(mode.goal?.phase === 'active' ? 'pause' : 'resume')
+                  }
+                >
+                  {mode.goal?.phase === 'active' ? '暂停目标' : '恢复目标'}
+                </button>
+              )}
+              {mode.goal && <button onClick={() => void updateGoal('clear')}>清除目标</button>}
+              {mode.plan_active && (
+                <button onClick={() => void setPlanMode(false)}>退出计划</button>
+              )}
+            </div>
+          </div>
+        )}
         <div className="detail-section">
           <span className="section-label">
             对话产物 <span>{artifacts.length}</span>
