@@ -315,8 +315,13 @@ export function useTaskWorkspace() {
 
   async function setPlanMode(active: boolean, sessionId = selectedId) {
     if (!sessionId) return;
-    const result = await api.setSessionPlan(sessionId, active);
-    if (sessionId === selectedId) setMode(result.mode);
+    try {
+      const result = await api.setSessionPlan(sessionId, active);
+      setError('');
+      if (sessionId === selectedId) setMode(result.mode);
+    } catch (cause) {
+      setError(message(cause));
+    }
   }
 
   async function decidePlan(approved: boolean, sessionId = selectedId) {

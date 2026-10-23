@@ -1,4 +1,13 @@
-import { Fragment, useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react';
+import {
+  Fragment,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactElement,
+} from 'react';
 import {
   ArrowUp,
   ArrowUpRight,
@@ -368,7 +377,7 @@ function PlanDock({ mode, onExit }: { mode: SessionMode; onExit: () => void }) {
         )}
         {mode.plan_active && (
           <button type="button" className="plan-dock-exit" onClick={onExit}>
-            退出
+            退出计划
           </button>
         )}
       </div>
@@ -484,6 +493,12 @@ function FileDiffPanel({
   );
 }
 
+function loadWidth(key: string, fallback: number, min: number, max: number): number {
+  if (typeof localStorage === 'undefined') return fallback;
+  const parsed = Number(localStorage.getItem(key));
+  return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : fallback;
+}
+
 export function Workbench() {
   const {
     tasks,
@@ -548,6 +563,18 @@ export function Workbench() {
     ? SLASH_COMMANDS.filter((item) => item.command.startsWith(slashInput))
     : [];
   const [detailsOpen, setDetailsOpen] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(() =>
+    loadWidth('yukii.sidebar.width', 240, 180, 360),
+  );
+  const [detailsWidth, setDetailsWidth] = useState(() =>
+    loadWidth('yukii.details.width', 270, 220, 640),
+  );
+  useEffect(() => {
+    localStorage.setItem('yukii.sidebar.width', String(sidebarWidth));
+  }, [sidebarWidth]);
+  useEffect(() => {
+    localStorage.setItem('yukii.details.width', String(detailsWidth));
+  }, [detailsWidth]);
   const [fileDiff, setFileDiff] = useState<FileDiff | null>(null);
   useEffect(() => {
     setComposerCommand(null);
@@ -719,10 +746,46 @@ export function Workbench() {
   async function openFileDiff(taskId: string, path: string) {
     try {
       const result = await httpApi.taskFileDiff(taskId, path);
+      setSelectedTrace(null);
       setFileDiff(result.change);
+      setDetailsWidth((width) =>
+        Math.min(Math.max(width, 560), Math.max(220, window.innerWidth - sidebarWidth - 420)),
+      );
     } catch (cause) {
       setInfo(cause instanceof Error ? cause.message : '无法读取文件差异');
     }
+  }
+
+  function openTrajectory(record: TrajectoryRecord) {
+    setFileDiff(null);
+    setSelectedTrace(record);
+    setDetailsWidth((width) =>
+      Math.min(Math.max(width, 420), Math.max(220, window.innerWidth - sidebarWidth - 420)),
+    );
+  }
+
+  function startResize(side: 'left' | 'right', event: ReactPointerEvent) {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = side === 'left' ? sidebarWidth : detailsWidth;
+    const centerMin = 420;
+    const other = side === 'left' ? detailsWidth : sidebarWidth;
+    const maxWidth = Math.max(
+      side === 'left' ? 180 : 220,
+      Math.min(side === 'left' ? 360 : 640, window.innerWidth - other - centerMin),
+    );
+    const onMove = (move: PointerEvent) => {
+      const delta = side === 'left' ? move.clientX - startX : startX - move.clientX;
+      const next = Math.min(maxWidth, Math.max(side === 'left' ? 180 : 220, startWidth + delta));
+      if (side === 'left') setSidebarWidth(next);
+      else setDetailsWidth(next);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
   }
 
   function openInCursor(path: string) {
@@ -1088,10 +1151,33 @@ export function Workbench() {
     return true;
   });
 
+  const rightPanelOpen = Boolean(fileDiff || selectedTrace);
   return (
     <div
-      className={`workbench ${sidebarOpen ? '' : 'sidebar-hidden'} ${detailsOpen ? '' : 'details-hidden'}`}
+      className={`workbench ${sidebarOpen ? '' : 'sidebar-hidden'} ${detailsOpen ? '' : 'details-hidden'} ${rightPanelOpen ? 'right-panel-open' : ''}`}
+      style={
+        {
+          '--sidebar-width': `${sidebarWidth}px`,
+          '--details-width': `${detailsWidth}px`,
+        } as CSSProperties
+      }
     >
+      {sidebarOpen && (
+        <div
+          className="resize-handle resize-left"
+          role="separator"
+          aria-label="调整左侧栏宽度"
+          onPointerDown={(event) => startResize('left', event)}
+        />
+      )}
+      {detailsOpen && (
+        <div
+          className="resize-handle resize-right"
+          role="separator"
+          aria-label="调整右侧栏宽度"
+          onPointerDown={(event) => startResize('right', event)}
+        />
+      )}
       <aside className="sidebar">
         <a
           className="brand"
@@ -1655,7 +1741,7 @@ export function Workbench() {
                         }}
                         onPointerDown={(event) => event.stopPropagation()}
                         onClick={() => {
-                          setSelectedTrace(record);
+                          openTrajectory(record);
                           setTraceTab('overview');
                         }}
                       />
@@ -1692,7 +1778,7 @@ export function Workbench() {
                         className={`trajectory-record ${record.kind} ${record.status}`}
                         style={{ paddingLeft: 8 + (record.tool?.depth ?? 0) * 18 }}
                         onClick={() => {
-                          setSelectedTrace(record);
+                          openTrajectory(record);
                           setTraceTab('overview');
                         }}
                       >
@@ -2352,7 +2438,11 @@ export function Workbench() {
           <button
             className="icon-button"
             aria-label="关闭摘要"
-            onClick={() => setDetailsOpen(false)}
+            onClick={() => {
+              if (fileDiff) setFileDiff(null);
+              if (selectedTrace) setSelectedTrace(null);
+              setDetailsOpen(false);
+            }}
           >
             <PanelRight size={18} />
           </button>

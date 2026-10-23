@@ -404,6 +404,7 @@ export const httpApi = {
   setSessionGoal: (id: string, objective: string, maxRounds = 6) =>
     request(`/sessions/${encodeURIComponent(id)}/goal`, z.object({ mode: sessionModeSchema }), {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ objective, max_goal_rounds: maxRounds }),
     }),
   updateSessionGoal: (
@@ -413,11 +414,13 @@ export const httpApi = {
   ) =>
     request(`/sessions/${encodeURIComponent(id)}/goal`, z.object({ mode: sessionModeSchema }), {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, ...(objective ? { objective } : {}) }),
     }),
   setSessionPlan: (id: string, active: boolean) =>
     request(`/sessions/${encodeURIComponent(id)}/plan`, z.object({ mode: sessionModeSchema }), {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ active }),
     }),
   decideSessionPlan: (id: string, approved: boolean) =>
@@ -428,7 +431,11 @@ export const httpApi = {
         mode: sessionModeSchema,
         task: taskSchema.optional(),
       }),
-      { method: 'POST', body: JSON.stringify({ approved }) },
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approved }),
+      },
     ),
   subagents: (taskId: string) =>
     request(
