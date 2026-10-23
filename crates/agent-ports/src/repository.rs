@@ -138,11 +138,13 @@ pub trait TaskRepository: Send + Sync {
         &self,
         session_id: &str,
     ) -> Result<Option<serde_json::Value>, RepositoryError>;
+    fn session_workspaces(&self) -> Result<Vec<serde_json::Value>, RepositoryError>;
     fn set_session_workspace(
         &self,
         session_id: &str,
         path: &str,
         name: &str,
+        kind: &str,
     ) -> Result<serde_json::Value, RepositoryError>;
     fn clear_session_workspace(&self, session_id: &str) -> Result<(), RepositoryError>;
     #[allow(clippy::too_many_arguments)]

@@ -84,16 +84,17 @@ const cuaApprovalSchema = z.object({
 
 export type CuaApproval = z.infer<typeof cuaApprovalSchema>;
 
-const workspaceSchema = z
-  .object({
-    session_id: z.string(),
-    path: z.string(),
-    name: z.string(),
-    updated_at: z.number(),
-  })
-  .nullable();
+const workspaceRecordSchema = z.object({
+  session_id: z.string(),
+  path: z.string(),
+  name: z.string(),
+  updated_at: z.number(),
+  kind: z.enum(['session', 'project']),
+});
 
-export type SessionWorkspace = z.infer<typeof workspaceSchema>;
+const workspaceSchema = workspaceRecordSchema.nullable();
+
+export type SessionWorkspace = z.infer<typeof workspaceRecordSchema>;
 
 const memorySchema = z.object({
   id: z.string(),
@@ -320,6 +321,8 @@ export const httpApi = {
       `/sessions/${encodeURIComponent(id)}/workspace`,
       z.object({ workspace: workspaceSchema }),
     ),
+  workspaces: () =>
+    request('/workspaces', z.object({ workspaces: z.array(workspaceRecordSchema) })),
   setSessionWorkspace: (id: string, path: string) =>
     request(
       `/sessions/${encodeURIComponent(id)}/workspace`,
@@ -327,9 +330,11 @@ export const httpApi = {
       { method: 'PUT', body: JSON.stringify({ path }) },
     ),
   clearSessionWorkspace: (id: string) =>
-    request(`/sessions/${encodeURIComponent(id)}/workspace`, z.object({ cleared: z.boolean() }), {
-      method: 'DELETE',
-    }),
+    request(
+      `/sessions/${encodeURIComponent(id)}/workspace`,
+      z.object({ cleared: z.boolean(), workspace: workspaceSchema }),
+      { method: 'DELETE' },
+    ),
   subagents: (taskId: string) =>
     request(
       `/tasks/${encodeURIComponent(taskId)}/subagents`,
@@ -429,10 +434,11 @@ export function localApi(): typeof httpApi | null {
     forkSession: async (id: string) => ({ session_id: id, forked_from: id }),
     deleteSession: async (id: string) => ({ deleted: id, tasks_removed: 0 }),
     sessionWorkspace: async () => ({ workspace: null }),
+    workspaces: async () => ({ workspaces: [] }),
     setSessionWorkspace: async (id: string, path: string) => ({
-      workspace: { session_id: id, path, name: 'workspace', updated_at: 0 },
+      workspace: { session_id: id, path, name: 'workspace', updated_at: 0, kind: 'project' },
     }),
-    clearSessionWorkspace: async () => ({ cleared: true }),
+    clearSessionWorkspace: async () => ({ cleared: true, workspace: null }),
     subagents: async () => ({ subagents: [] }),
     cancelSubagent: async (_taskId: string, runId: string) => ({ cancelled: runId }),
     tools: async () => ({ tools: [] }),

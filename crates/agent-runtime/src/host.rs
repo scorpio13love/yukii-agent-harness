@@ -85,8 +85,9 @@ async fn inherit_workspace(host: &TaskHost, child_session: &str) -> Result<(), A
         if let Some(workspace) = store.session_workspace(&parent.conversation_id)? {
             let path = workspace["path"].as_str().unwrap_or_default();
             let name = workspace["name"].as_str().unwrap_or("workspace");
+            let kind = workspace["kind"].as_str().unwrap_or("project");
             if !path.is_empty() {
-                store.set_session_workspace(&child_session, path, name)?;
+                store.set_session_workspace(&child_session, path, name, kind)?;
             }
         }
         Ok(())

@@ -8,6 +8,7 @@ pub mod schedule_tools;
 pub mod session_tools;
 pub mod store;
 pub mod web_search;
+pub mod workspaces;
 use executor::Executor;
 use yukii_contracts::Artifact;
 
@@ -38,7 +39,8 @@ use yukii_agent_ports::{
     repository::{RepositoryError, TaskRepository},
 };
 use yukii_contracts::{
-    ApiError, CHROMIUM_MAJOR, Capabilities, CreateTask, PROTOCOL_VERSION, Task, TaskEvent,
+    ApiError, CHROMIUM_MAJOR, Capabilities, CreateTask, ExecutionTarget, PROTOCOL_VERSION, Task,
+    TaskEvent,
 };
 use yukii_mcp_client::{McpToolCatalog, McpToolView};
 
@@ -54,6 +56,7 @@ pub struct AppState {
     pub web_dist: Option<std::path::PathBuf>,
     pub memory: Option<Arc<yukii_agent_memory::MemoryService>>,
     pub tools: Option<Arc<dyn yukii_agent_ports::tools::ToolCatalog>>,
+    pub workspace_root: std::path::PathBuf,
 }
 
 pub fn router(store: Arc<TaskStore>) -> Router {
@@ -68,6 +71,7 @@ pub fn router(store: Arc<TaskStore>) -> Router {
         web_dist: None,
         memory: None,
         tools: None,
+        workspace_root: std::path::PathBuf::from(".data/chats"),
     })
 }
 
@@ -84,6 +88,7 @@ pub fn configured_router(state: AppState) -> Router {
         .route("/api/mcp", get(mcp_tools))
         .route("/api/mcp/tools/{name}/enabled", post(set_mcp_tool))
         .route("/api/sessions", get(list_conversations))
+        .route("/api/workspaces", get(list_workspaces))
         .route("/api/sessions/search", get(search_sessions_handler))
         .route(
             "/api/sessions/{id}",
@@ -339,6 +344,16 @@ async fn create_task(
     let enqueue = state.executor.available();
     let store = state.store.clone();
     let created = database(move || store.create_once(input, &key, enqueue)).await?;
+    if matches!(created.task.target, ExecutionTarget::CloudOffice) {
+        let store = state.store.clone();
+        let root = state.workspace_root.clone();
+        let session_id = created.task.conversation_id.clone();
+        let title = created.task.conversation_title.clone();
+        database(move || {
+            workspaces::ensure_default_workspace(store.as_ref(), &root, &session_id, &title, false)
+        })
+        .await?;
+    }
     if !attachment_records.is_empty() {
         let conversation_id = created.task.conversation_id.clone();
         for record in &mut attachment_records {
@@ -690,11 +705,37 @@ async fn fork_session(
     ))
 }
 
+async fn list_workspaces(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    let store = state.store.clone();
+    let root = state.workspace_root.clone();
+    let workspaces = database(move || {
+        workspaces::backfill_default_workspaces(store.as_ref(), &root)?;
+        store.session_workspaces()
+    })
+    .await?;
+    Ok(Json(serde_json::json!({"workspaces": workspaces})))
+}
+
 async fn get_session_workspace(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    let workspace = database(move || state.store.session_workspace(&id)).await?;
+    let store = state.store.clone();
+    let root = state.workspace_root.clone();
+    let workspace = database(move || {
+        if let Some(workspace) = store.session_workspace(&id)? {
+            return Ok(workspace);
+        }
+        let tasks = store.conversation(&id)?;
+        let title = tasks
+            .first()
+            .map(|task| task.conversation_title.as_str())
+            .unwrap_or("新对话");
+        workspaces::ensure_default_workspace(store.as_ref(), &root, &id, title, false)
+    })
+    .await?;
     Ok(Json(serde_json::json!({"workspace": workspace})))
 }
 
@@ -723,7 +764,12 @@ async fn set_session_workspace(
         .file_name()
         .map(|value| value.to_string_lossy().to_string())
         .unwrap_or_else(|| "工作区".into());
-    let workspace = database(move || state.store.set_session_workspace(&id, &path, &name)).await?;
+    let workspace = database(move || {
+        state
+            .store
+            .set_session_workspace(&id, &path, &name, "project")
+    })
+    .await?;
     Ok(Json(serde_json::json!({"workspace": workspace})))
 }
 
@@ -731,8 +777,20 @@ async fn clear_session_workspace(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    database(move || state.store.clear_session_workspace(&id)).await?;
-    Ok(Json(serde_json::json!({"cleared": true})))
+    let store = state.store.clone();
+    let root = state.workspace_root.clone();
+    let workspace = database(move || {
+        let tasks = store.conversation(&id)?;
+        let title = tasks
+            .first()
+            .map(|task| task.conversation_title.as_str())
+            .unwrap_or("新对话");
+        workspaces::ensure_default_workspace(store.as_ref(), &root, &id, title, true)
+    })
+    .await?;
+    Ok(Json(
+        serde_json::json!({"cleared": true, "workspace": workspace}),
+    ))
 }
 
 async fn compact_conversation(

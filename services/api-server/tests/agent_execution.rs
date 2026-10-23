@@ -136,6 +136,8 @@ async fn round_trip(format: ApiFormat) {
         web_dist: None,
         memory: None,
         tools: None,
+        workspace_root: std::env::temp_dir()
+            .join(format!("yukii-workspaces-{}", uuid::Uuid::new_v4())),
     });
     let response = app
         .clone()

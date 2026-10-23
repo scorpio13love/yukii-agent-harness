@@ -152,6 +152,16 @@ button:hover:not(:disabled) {
   line-height: 1.9;
   padding: 7px 13px;
 }
+.empty-history.compact {
+  font-size: 11px;
+  padding: 2px 13px 10px;
+}
+.history-group-title {
+  padding: 18px 12px 8px;
+  color: #989eaa;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
 .history-item {
   display: flex;
   align-items: center;
@@ -194,6 +204,29 @@ button:hover:not(:disabled) {
   background: #eceff3;
   padding: 3px 5px;
   border-radius: 4px;
+}
+.workspace-path {
+  margin: 6px 0 10px;
+  color: #6c7480;
+  font-size: 11px;
+  line-height: 1.6;
+  word-break: break-all;
+}
+.workspace-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.workspace-actions button {
+  padding: 5px 9px;
+  border: 1px solid #dfe4ea;
+  border-radius: 6px;
+  background: #fff;
+  color: #4c5665;
+  font-size: 11px;
+}
+.workspace-actions button:hover {
+  background: #f3f6fa;
 }
 .status-dot {
   height: 5px;

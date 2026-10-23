@@ -401,6 +401,13 @@ ipcMain.handle('workspace:select', async () => {
   return result.canceled ? null : (result.filePaths[0] ?? null);
 });
 
+ipcMain.handle('workspace:open', async (_event, target) => {
+  const path = String(target ?? '').trim();
+  if (!path) return '工作区路径为空';
+  const error = await shell.openPath(path);
+  return error || null;
+});
+
 app.whenReady().then(async () => {
   await ensureApiServer();
   setInterval(() => void watchScheduleReminders(), 5000);

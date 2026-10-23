@@ -1310,16 +1310,34 @@ impl TaskStore {
         let connection = self.connection.lock().map_err(|_| StoreError::Lock)?;
         Ok(connection
             .query_row(
-                "SELECT session_id,path,name,updated_at FROM session_workspaces WHERE session_id=?1",
+                "SELECT session_id,path,name,updated_at,kind FROM session_workspaces WHERE session_id=?1",
                 [session_id],
                 |row| Ok(serde_json::json!({
                     "session_id": row.get::<_, String>(0)?,
                     "path": row.get::<_, String>(1)?,
                     "name": row.get::<_, String>(2)?,
                     "updated_at": row.get::<_, i64>(3)?,
+                    "kind": row.get::<_, String>(4)?,
                 })),
             )
             .optional()?)
+    }
+
+    pub fn session_workspaces(&self) -> Result<Vec<serde_json::Value>, StoreError> {
+        let connection = self.connection.lock().map_err(|_| StoreError::Lock)?;
+        let mut statement = connection.prepare(
+            "SELECT session_id,path,name,updated_at,kind FROM session_workspaces ORDER BY updated_at DESC",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(serde_json::json!({
+                "session_id": row.get::<_, String>(0)?,
+                "path": row.get::<_, String>(1)?,
+                "name": row.get::<_, String>(2)?,
+                "updated_at": row.get::<_, i64>(3)?,
+                "kind": row.get::<_, String>(4)?,
+            }))
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
     pub fn set_session_workspace(
@@ -1327,14 +1345,15 @@ impl TaskStore {
         session_id: &str,
         path: &str,
         name: &str,
+        kind: &str,
     ) -> Result<serde_json::Value, StoreError> {
         let connection = self.connection.lock().map_err(|_| StoreError::Lock)?;
         connection.execute(
-            "INSERT INTO session_workspaces(session_id,path,name,updated_at) VALUES(?1,?2,?3,?4)
-             ON CONFLICT(session_id) DO UPDATE SET path=excluded.path,name=excluded.name,updated_at=excluded.updated_at",
-            params![session_id, path, name, now()],
+            "INSERT INTO session_workspaces(session_id,path,name,updated_at,kind) VALUES(?1,?2,?3,?4,?5)
+             ON CONFLICT(session_id) DO UPDATE SET path=excluded.path,name=excluded.name,updated_at=excluded.updated_at,kind=excluded.kind",
+            params![session_id, path, name, now(), kind],
         )?;
-        Ok(serde_json::json!({"session_id":session_id,"path":path,"name":name}))
+        Ok(serde_json::json!({"session_id":session_id,"path":path,"name":name,"kind":kind}))
     }
 
     pub fn clear_session_workspace(&self, session_id: &str) -> Result<(), StoreError> {

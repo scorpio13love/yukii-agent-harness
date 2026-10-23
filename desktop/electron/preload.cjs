@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld(
     shell: 'electron',
     openCuaPanel: () => ipcRenderer.invoke('cua:open-panel'),
     selectWorkspace: () => ipcRenderer.invoke('workspace:select'),
+    openWorkspace: (target) => ipcRenderer.invoke('workspace:open', target),
     readClipboard: () => ipcRenderer.invoke('clipboard:read'),
     writeClipboard: (text) => ipcRenderer.invoke('clipboard:write', text),
     onScheduleReminder: (handler) => {

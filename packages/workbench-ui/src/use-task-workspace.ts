@@ -31,6 +31,7 @@ export function useTaskWorkspace() {
   const [tools, setTools] = useState<ToolInfo[]>([]);
   const [subagents, setSubagents] = useState<SubagentRun[]>([]);
   const [workspace, setWorkspace] = useState<SessionWorkspace | null>(null);
+  const [workspaces, setWorkspaces] = useState<Record<string, SessionWorkspace>>({});
   const [reloadToken, setReloadToken] = useState(0);
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
   const [selectedId, selectId] = useState<string | null>(null);
@@ -73,16 +74,20 @@ export function useTaskWorkspace() {
   async function refresh() {
     setLoading(true);
     try {
-      const [nextCapabilities, nextTasks, nextSchedules, nextMemories, nextTools] =
+      const [nextCapabilities, nextTasks, nextSchedules, nextMemories, nextTools, nextWorkspaces] =
         await Promise.all([
           api.capabilities(),
           api.tasks(),
           api.schedules(),
           api.memories(),
           api.tools(),
+          api.workspaces(),
         ]);
       setCapabilities(nextCapabilities);
       setTasks(nextTasks);
+      setWorkspaces(
+        Object.fromEntries(nextWorkspaces.workspaces.map((item) => [item.session_id, item])),
+      );
       setSchedules(nextSchedules.schedules);
       setMemories(nextMemories.memories);
       setTools(nextTools.tools);
@@ -164,6 +169,10 @@ export function useTaskWorkspace() {
         setTrajectory(nextTrajectory.records);
         setSubagents(nextSubagents.subagents);
         setWorkspace(nextWorkspace.workspace);
+        if (nextWorkspace.workspace) {
+          const current = nextWorkspace.workspace;
+          setWorkspaces((previous) => ({ ...previous, [id]: current }));
+        }
         setTrajectoryHasOlder((nextTrajectory.records[0]?.turn ?? 1) > 1);
         if (isActiveTask(task)) {
           const url = api.streamTaskUrl(task.id);
@@ -267,10 +276,18 @@ export function useTaskWorkspace() {
     if (!sessionId) return;
     if (path) {
       const result = await api.setSessionWorkspace(sessionId, path);
-      if (sessionId === selectedId) setWorkspace(result.workspace);
+      if (result.workspace) {
+        const next = result.workspace;
+        setWorkspaces((previous) => ({ ...previous, [sessionId]: next }));
+        if (sessionId === selectedId) setWorkspace(next);
+      }
     } else {
-      await api.clearSessionWorkspace(sessionId);
-      if (sessionId === selectedId) setWorkspace(null);
+      const result = await api.clearSessionWorkspace(sessionId);
+      if (result.workspace) {
+        const next = result.workspace;
+        setWorkspaces((previous) => ({ ...previous, [sessionId]: next }));
+        if (sessionId === selectedId) setWorkspace(next);
+      }
     }
   }
 
@@ -406,6 +423,7 @@ export function useTaskWorkspace() {
     subagents,
     cancelSubagent,
     workspace,
+    workspaces,
     deleteSession,
     forkSession,
     setWorkspace: updateWorkspace,

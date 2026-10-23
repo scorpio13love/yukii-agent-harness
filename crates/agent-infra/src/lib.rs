@@ -196,13 +196,18 @@ impl TaskRepository for TaskStore {
         TaskStore::session_workspace(self, session_id).map_err(Into::into)
     }
 
+    fn session_workspaces(&self) -> Result<Vec<serde_json::Value>, RepositoryError> {
+        TaskStore::session_workspaces(self).map_err(Into::into)
+    }
+
     fn set_session_workspace(
         &self,
         session_id: &str,
         path: &str,
         name: &str,
+        kind: &str,
     ) -> Result<serde_json::Value, RepositoryError> {
-        TaskStore::set_session_workspace(self, session_id, path, name).map_err(Into::into)
+        TaskStore::set_session_workspace(self, session_id, path, name, kind).map_err(Into::into)
     }
 
     fn clear_session_workspace(&self, session_id: &str) -> Result<(), RepositoryError> {

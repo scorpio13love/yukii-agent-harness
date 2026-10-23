@@ -10,6 +10,7 @@ import {
   GitBranch,
   FileText,
   Folder,
+  FolderOpen,
   LayoutGrid,
   LoaderCircle,
   Monitor,
@@ -231,6 +232,8 @@ export function Workbench() {
     deleteSession,
     forkSession,
     setWorkspace,
+    workspace,
+    workspaces,
     reloadSession,
     deleteMemory,
     schedules,
@@ -299,6 +302,86 @@ export function Workbench() {
     clearDraft();
     resetComposer();
     editor.current?.focus();
+  }
+
+  async function pickWorkspace(sessionId: string) {
+    const desktop = (
+      window as Window & {
+        yukiiDesktop?: { selectWorkspace?: () => Promise<string | null> };
+      }
+    ).yukiiDesktop;
+    const picked = (await desktop?.selectWorkspace?.()) ?? window.prompt('工作区路径', '');
+    if (picked?.trim()) await setWorkspace(picked.trim(), sessionId);
+  }
+
+  async function openWorkspaceFolder(sessionId: string) {
+    const path = workspaces[sessionId]?.path;
+    if (!path) {
+      setInfo('这个会话还没有工作区。');
+      return;
+    }
+    const desktop = (
+      window as Window & {
+        yukiiDesktop?: {
+          openWorkspace?: (target: string) => Promise<string | null>;
+          writeClipboard?: (text: string) => Promise<void>;
+        };
+      }
+    ).yukiiDesktop;
+    if (desktop?.openWorkspace) {
+      const error = await desktop.openWorkspace(path);
+      if (error) setInfo(error);
+      return;
+    }
+    if (desktop?.writeClipboard) {
+      await desktop.writeClipboard(path);
+      setInfo('已复制工作区路径。');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(path);
+      setInfo('已复制工作区路径。');
+    } catch {
+      setInfo(path);
+    }
+  }
+
+  const projectSessions = tasks.filter((task) => workspaces[task.session_id]?.kind === 'project');
+  const recentSessions = tasks.filter((task) => workspaces[task.session_id]?.kind !== 'project');
+  function renderSession(task: Task): ReactElement {
+    const isProject = workspaces[task.session_id]?.kind === 'project';
+    return (
+      <div className="history-item-wrap" key={task.session_id}>
+        <button
+          data-session-id={task.session_id}
+          className={`history-item ${selectedId === task.session_id ? 'selected' : ''}`}
+          onClick={() => setSelectedId(task.session_id)}
+        >
+          {isProject ? <Folder size={15} /> : <FileText size={15} />}
+          <Marquee text={splitMessage(task.session_title).text} />
+        </button>
+        <div className="history-actions">
+          <button title="Fork Session" onClick={() => void forkSession(task.session_id)}>
+            <GitBranch size={13} />
+          </button>
+          <button title="打开工作区" onClick={() => void openWorkspaceFolder(task.session_id)}>
+            <FolderOpen size={13} />
+          </button>
+          <button title="绑定项目目录" onClick={() => void pickWorkspace(task.session_id)}>
+            <Folder size={13} />
+          </button>
+          <button
+            title="删除 Session"
+            onClick={async () => {
+              if (!window.confirm('删除这个 Session 及其全部记录？')) return;
+              await deleteSession(task.session_id);
+            }}
+          >
+            ×
+          </button>
+        </div>
+      </div>
+    );
   }
   async function uploadAttachment(file: File | undefined) {
     if (!file || uploading) return;
@@ -553,7 +636,7 @@ export function Workbench() {
           </button>
         </nav>
         <div className="history-title">
-          <span>工作区</span>
+          <span>会话</span>
           <button aria-label="刷新任务" onClick={() => void refresh()} disabled={loading}>
             <Search size={15} />
           </button>
@@ -567,47 +650,22 @@ export function Workbench() {
               都会留在这里。
             </p>
           )}
-          {tasks.map((task) => (
-            <div className="history-item-wrap" key={task.session_id}>
-              <button
-                data-session-id={task.session_id}
-                className={`history-item ${selectedId === task.session_id ? 'selected' : ''}`}
-                onClick={() => setSelectedId(task.session_id)}
-              >
-                <FileText size={15} />
-                <Marquee text={splitMessage(task.session_title).text} />
-              </button>
-              <div className="history-actions">
-                <button title="Fork Session" onClick={() => void forkSession(task.session_id)}>
-                  <GitBranch size={13} />
-                </button>
-                <button
-                  title="绑定工作区"
-                  onClick={async () => {
-                    const desktop = (
-                      window as Window & {
-                        yukiiDesktop?: { selectWorkspace?: () => Promise<string | null> };
-                      }
-                    ).yukiiDesktop;
-                    const picked =
-                      (await desktop?.selectWorkspace?.()) ?? window.prompt('工作区路径', '');
-                    if (picked?.trim()) await setWorkspace(picked.trim(), task.session_id);
-                  }}
-                >
-                  <Folder size={13} />
-                </button>
-                <button
-                  title="删除 Session"
-                  onClick={async () => {
-                    if (!window.confirm('删除这个 Session 及其全部记录？')) return;
-                    await deleteSession(task.session_id);
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-          ))}
+          {!loading && tasks.length > 0 && (
+            <>
+              <div className="history-group-title">项目</div>
+              {projectSessions.length > 0 ? (
+                projectSessions.map(renderSession)
+              ) : (
+                <p className="empty-history compact">还没有绑定项目的会话。</p>
+              )}
+              <div className="history-group-title">最近</div>
+              {recentSessions.length > 0 ? (
+                recentSessions.map(renderSession)
+              ) : (
+                <p className="empty-history compact">还没有会话。</p>
+              )}
+            </>
+          )}
         </div>
         <div className="sidebar-bottom">
           <div className="workspace-note">
@@ -1665,6 +1723,23 @@ export function Workbench() {
               ? '任务状态与执行记录保存在当前开发服务中。'
               : '你的目标、过程与成果，将在这里清晰呈现。'}
           </p>
+        </div>
+        <div className="detail-section">
+          <span className="section-label">
+            工作区 <span>{workspace?.kind === 'project' ? '项目' : '会话'}</span>
+          </span>
+          <p className="workspace-path">
+            {workspace?.path ?? (selectedId ? '发送第一条消息后自动创建' : '选择会话后显示')}
+          </p>
+          <div className="workspace-actions">
+            {selectedId && (
+              <button onClick={() => void openWorkspaceFolder(selectedId)}>打开文件夹</button>
+            )}
+            {selectedId && <button onClick={() => void pickWorkspace(selectedId)}>绑定项目</button>}
+            {selectedId && workspace?.kind === 'project' && (
+              <button onClick={() => void setWorkspace(null, selectedId)}>恢复会话目录</button>
+            )}
+          </div>
         </div>
         <div className="detail-section">
           <span className="section-label">

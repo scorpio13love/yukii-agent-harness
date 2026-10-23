@@ -38,6 +38,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(&directory)?;
     let _instance = yukii_agent_infra::InstanceLock::acquire(directory.join("service.lock"))?;
     let store = Arc::new(TaskStore::open(directory.join("tasks.sqlite"))?);
+    let workspace_root = yukii_api_server::workspaces::default_chat_root();
+    if let Err(error) =
+        yukii_api_server::workspaces::backfill_default_workspaces(store.as_ref(), &workspace_root)
+    {
+        tracing::warn!(%error, "默认会话工作区回填失败");
+    }
     let recovered = store.recover_interrupted()?;
     let recovered_schedules = store.recover_schedules()?;
     tracing::info!(recovered_schedules, "已恢复计划任务领取状态");
@@ -141,7 +147,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let schedule_tools = Arc::new(yukii_api_server::schedule_tools::ScheduleTools::new(
         store.clone(),
     ));
-    let dev_tools = Arc::new(yukii_api_server::dev_tools::DevTools::new(store.clone()));
+    let dev_tools = Arc::new(yukii_api_server::dev_tools::DevTools::new(
+        store.clone(),
+        workspace_root.clone(),
+    ));
     let session_tools = Arc::new(yukii_api_server::session_tools::SessionTools::new(
         store.clone(),
     ));
@@ -292,6 +301,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         web_dist: std::env::var("YUKII_WEB_DIST")
             .ok()
             .map(std::path::PathBuf::from),
+        workspace_root,
     };
     tracing::info!("API 已启动：http://127.0.0.1:8765（单实例、回环访问）");
     axum::serve(listener, configured_router(state))

@@ -20,20 +20,34 @@ const DOCKER_IMAGE: &str = "python:3.13-alpine";
 
 pub struct DevTools {
     store: Arc<dyn TaskRepository>,
+    workspace_root: PathBuf,
 }
 
 impl DevTools {
-    pub fn new(store: Arc<dyn TaskRepository>) -> Self {
-        Self { store }
+    pub fn new(store: Arc<dyn TaskRepository>, workspace_root: PathBuf) -> Self {
+        Self {
+            store,
+            workspace_root,
+        }
     }
 
     fn workspace(&self, task_id: &str) -> Result<PathBuf, String> {
         let task = self.store.get(task_id).map_err(|_| "任务不存在")?;
-        let workspace = self
+        let workspace = match self
             .store
             .session_workspace(&task.conversation_id)
             .map_err(|_| "无法读取工作区")?
-            .ok_or("请先在左侧为当前 Session 绑定工作区")?;
+        {
+            Some(workspace) => workspace,
+            None => crate::workspaces::ensure_default_workspace(
+                self.store.as_ref(),
+                &self.workspace_root,
+                &task.conversation_id,
+                &task.conversation_title,
+                false,
+            )
+            .map_err(|_| "无法创建默认工作区")?,
+        };
         let path = workspace["path"].as_str().ok_or("工作区路径无效")?;
         let root = std::fs::canonicalize(path).map_err(|_| "工作区路径不可用")?;
         if !root.is_dir() {
@@ -180,6 +194,7 @@ async fn docker_run(root: &Path, command: &str) -> Result<Value, String> {
 
 struct DevTool {
     store: Arc<dyn TaskRepository>,
+    workspace_root: PathBuf,
     kind: Kind,
 }
 
@@ -208,6 +223,7 @@ impl ToolCatalog for DevTools {
         .map(|kind| {
             Arc::new(DevTool {
                 store: self.store.clone(),
+                workspace_root: self.workspace_root.clone(),
                 kind,
             }) as Arc<dyn Tool>
         })
@@ -264,10 +280,17 @@ impl Tool for DevTool {
     async fn execute(&self, context: &ToolContext, arguments: Value) -> Result<ToolEffect, String> {
         let root = {
             let store = self.store.clone();
+            let workspace_root = self.workspace_root.clone();
             let task_id = context.task_id.clone();
-            tokio::task::spawn_blocking(move || DevTools { store }.workspace(&task_id))
-                .await
-                .map_err(|_| "工作区读取失败")??
+            tokio::task::spawn_blocking(move || {
+                DevTools {
+                    store,
+                    workspace_root,
+                }
+                .workspace(&task_id)
+            })
+            .await
+            .map_err(|_| "工作区读取失败")??
         };
         match self.kind {
             Kind::Read => {
