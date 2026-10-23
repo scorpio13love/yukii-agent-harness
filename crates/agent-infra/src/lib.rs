@@ -53,6 +53,9 @@ impl TaskRepository for TaskStore {
     fn get(&self, id: &str) -> Result<Task, RepositoryError> {
         TaskStore::get(self, id).map_err(Into::into)
     }
+    fn set_task_command(&self, id: &str, command: &str) -> Result<Task, RepositoryError> {
+        TaskStore::set_task_command(self, id, command).map_err(Into::into)
+    }
     fn events(&self, id: &str) -> Result<Vec<TaskEvent>, RepositoryError> {
         TaskStore::events(self, id).map_err(Into::into)
     }
@@ -257,6 +260,18 @@ impl TaskRepository for TaskStore {
 
     fn clear_plan_pending(&self, session_id: &str) -> Result<serde_json::Value, RepositoryError> {
         TaskStore::clear_plan_pending(self, session_id).map_err(Into::into)
+    }
+
+    fn set_plan_steps(
+        &self,
+        session_id: &str,
+        steps: &serde_json::Value,
+    ) -> Result<serde_json::Value, RepositoryError> {
+        TaskStore::set_plan_steps(self, session_id, steps).map_err(Into::into)
+    }
+
+    fn clear_plan_steps(&self, session_id: &str) -> Result<serde_json::Value, RepositoryError> {
+        TaskStore::clear_plan_steps(self, session_id).map_err(Into::into)
     }
 
     fn increment_goal_round(&self, session_id: &str) -> Result<serde_json::Value, RepositoryError> {

@@ -47,6 +47,9 @@ pub struct Task {
     pub target: ExecutionTarget,
     pub status: TaskStatus,
     pub created_at: i64,
+    /// 用户通过斜杠命令创建本轮时记录的命令；命令本身不进入模型 prompt。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
     #[serde(default)]
     pub result: Option<String>,
     #[serde(default)]

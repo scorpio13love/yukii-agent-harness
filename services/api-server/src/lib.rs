@@ -266,6 +266,8 @@ struct CreateTaskRequest {
     goal_objective: Option<String>,
     #[serde(default)]
     goal_max_rounds: Option<i64>,
+    #[serde(default)]
+    command: Option<String>,
 }
 
 async fn create_task(
@@ -276,7 +278,15 @@ async fn create_task(
     let mode = request.mode.clone();
     let goal_objective = request.goal_objective.clone();
     let goal_max_rounds = request.goal_max_rounds;
+    let command = request.command.clone();
     let initial_prompt = request.prompt.clone();
+    if let Some(command) = command.as_deref()
+        && !matches!(command, "/goal" | "/plan")
+    {
+        return Err(HttpError(RepositoryError::InvalidRequest(
+            "command 仅支持 /goal 或 /plan",
+        )));
+    }
     if let Some(mode) = mode.as_deref()
         && !matches!(mode, "goal" | "plan")
     {
@@ -397,7 +407,12 @@ async fn create_task(
         )))?
         .to_owned();
     let store = state.store.clone();
-    let created = database(move || store.create_once(input, &key, false)).await?;
+    let mut created = database(move || store.create_once(input, &key, false)).await?;
+    if let Some(command) = command {
+        let store = state.store.clone();
+        let task_id = created.task.id.clone();
+        created.task = database(move || store.set_task_command(&task_id, &command)).await?;
+    }
     if let Some(mode) = mode.as_deref() {
         let store = state.store.clone();
         let session_id = created.task.conversation_id.clone();
@@ -941,7 +956,14 @@ async fn set_session_plan(
     Path(id): Path<String>,
     Json(input): Json<PlanModeInput>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    let mode = database(move || state.store.set_plan_active(&id, input.active)).await?;
+    let mode = database(move || {
+        let mode = state.store.set_plan_active(&id, input.active)?;
+        if !input.active {
+            state.store.clear_plan_steps(&id)?;
+        }
+        Ok::<_, RepositoryError>(mode)
+    })
+    .await?;
     Ok(Json(serde_json::json!({"mode": mode})))
 }
 
@@ -993,7 +1015,7 @@ async fn decide_session_plan(
         store.create_once(
             CreateTask {
                 conversation_id: Some(session_id),
-                prompt: "用户已批准你提交的计划。请开始执行该计划：先检查当前工作区与相关文件，再逐步完成并验证结果。".into(),
+                prompt: "用户已批准你提交的计划。请开始执行该计划：先检查当前工作区与相关文件，再逐步完成并验证结果。每完成一步后调用 update_plan 更新完整步骤状态；全部完成后把所有步骤标记为 completed。".into(),
                 target: ExecutionTarget::CloudOffice,
             },
             &key,

@@ -69,6 +69,7 @@ export function useTaskWorkspace() {
     workspacePath?: string;
     mode?: 'goal' | 'plan';
     goalObjective?: string;
+    command?: '/goal' | '/plan';
   } | null>(null);
   const selected = tasks.find((task) => task.session_id === selectedId);
 
@@ -372,6 +373,7 @@ export function useTaskWorkspace() {
     workspacePath?: string,
     nextMode?: 'goal' | 'plan',
     goalObjective?: string,
+    command?: '/goal' | '/plan',
   ) {
     event?.preventDefault();
     // 直接使用编辑器快照，避免 IME/快速回车时 React prompt 状态尚未刷新。
@@ -394,7 +396,8 @@ export function useTaskWorkspace() {
         pendingSubmission.current.conversationId !== submittedConversation ||
         pendingSubmission.current.workspacePath !== workspacePath ||
         pendingSubmission.current.mode !== nextMode ||
-        pendingSubmission.current.goalObjective !== goalObjective
+        pendingSubmission.current.goalObjective !== goalObjective ||
+        pendingSubmission.current.command !== command
       ) {
         pendingSubmission.current = {
           prompt: text,
@@ -403,6 +406,7 @@ export function useTaskWorkspace() {
           workspacePath,
           mode: nextMode,
           goalObjective,
+          command,
         };
       }
       const task = await api.createTask(
@@ -414,6 +418,7 @@ export function useTaskWorkspace() {
         workspacePath,
         nextMode,
         goalObjective,
+        command,
       );
       pendingSubmission.current = null;
       setTasks((previous) => [

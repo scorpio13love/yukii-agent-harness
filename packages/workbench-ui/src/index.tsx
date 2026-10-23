@@ -17,13 +17,25 @@ import {
   PanelLeft,
   PanelRight,
   Paperclip,
+  Pause,
+  Pencil,
+  Play,
   Plus,
   Search,
   Settings2,
   Sparkles,
   SquarePen,
+  Target,
+  Trash2,
+  X,
 } from 'lucide-react';
-import { httpApi, type CuaApproval, type Task, type TrajectoryRecord } from './api';
+import {
+  httpApi,
+  type CuaApproval,
+  type SessionMode,
+  type Task,
+  type TrajectoryRecord,
+} from './api';
 import { isActiveTask, useTaskWorkspace } from './use-task-workspace';
 import { InfoDialog } from './info-dialog';
 import { OfficePanel } from './office-panel';
@@ -68,18 +80,8 @@ const ATTACHMENT_MARKER = '\n\n当前消息附件（元数据，不是正文）�
 const STAGING_SESSION_ID = '00000000-0000-4000-8000-000000000000';
 
 const SLASH_COMMANDS = [
-  { command: '/goal', insert: '/goal ', label: '建立长期目标', hint: '/goal <目标>' },
-  {
-    command: '/goal edit',
-    insert: '/goal edit ',
-    label: '编辑当前目标',
-    hint: '/goal edit <新目标>',
-  },
-  { command: '/goal pause', insert: '/goal pause', label: '暂停目标', hint: '/goal pause' },
-  { command: '/goal resume', insert: '/goal resume', label: '恢复目标', hint: '/goal resume' },
-  { command: '/goal clear', insert: '/goal clear', label: '清除目标', hint: '/goal clear' },
-  { command: '/plan', insert: '/plan ', label: '进入计划模式', hint: '/plan [需求]' },
-  { command: '/plan off', insert: '/plan off', label: '退出计划模式', hint: '/plan off' },
+  { command: '/goal', label: '设定目标，智能体持续执行', hint: '/goal 目标' },
+  { command: '/plan', label: '计划模式，先设计步骤再执行', hint: '/plan 需求' },
 ];
 
 /** 从运行时 prompt 中拆出用户正文与附件元数据，避免把元数据块当正文展示。 */
@@ -242,6 +244,156 @@ function useThinkingSeconds(active: boolean, startedAt?: number) {
   return Math.max(0, Math.floor(now / 1000 - startedAt));
 }
 
+function GoalDock({
+  goal,
+  onEdit,
+  onPause,
+  onResume,
+  onClear,
+}: {
+  goal: NonNullable<SessionMode['goal']>;
+  onEdit: (objective: string) => void;
+  onPause: () => void;
+  onResume: () => void;
+  onClear: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(goal.objective);
+  useEffect(() => {
+    setDraft(goal.objective);
+    setEditing(false);
+  }, [goal.objective]);
+  if (goal.phase === 'complete') return null;
+  const label =
+    goal.phase === 'paused'
+      ? '已暂停的目标'
+      : goal.phase === 'blocked'
+        ? '受阻的目标'
+        : '进行中的目标';
+  const save = () => {
+    const next = draft.trim();
+    if (!next) return;
+    onEdit(next);
+    setEditing(false);
+  };
+  return (
+    <div className="goal-dock">
+      <div className="goal-dock-bar">
+        <Target size={15} className="goal-dock-icon" />
+        <span className="goal-dock-label">{label}</span>
+        {editing ? (
+          <input
+            className="goal-dock-input"
+            value={draft}
+            autoFocus
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') save();
+              if (event.key === 'Escape') setEditing(false);
+            }}
+          />
+        ) : (
+          <span className="goal-dock-objective" title={goal.objective}>
+            {goal.objective}
+          </span>
+        )}
+        <div className="goal-dock-actions">
+          {editing ? (
+            <>
+              <button type="button" aria-label="保存目标" title="保存目标" onClick={save}>
+                <Check size={14} />
+              </button>
+              <button
+                type="button"
+                aria-label="取消编辑"
+                title="取消编辑"
+                onClick={() => {
+                  setEditing(false);
+                  setDraft(goal.objective);
+                }}
+              >
+                <X size={14} />
+              </button>
+            </>
+          ) : (
+            <>
+              {goal.phase === 'active' && (
+                <button type="button" aria-label="暂停目标" title="暂停目标" onClick={onPause}>
+                  <Pause size={14} />
+                </button>
+              )}
+              {goal.phase === 'paused' && (
+                <button type="button" aria-label="恢复目标" title="恢复目标" onClick={onResume}>
+                  <Play size={14} />
+                </button>
+              )}
+              <button
+                type="button"
+                aria-label="编辑目标"
+                title="编辑目标"
+                onClick={() => {
+                  setDraft(goal.objective);
+                  setEditing(true);
+                }}
+              >
+                <Pencil size={14} />
+              </button>
+              <button type="button" aria-label="清除目标" title="清除目标" onClick={onClear}>
+                <Trash2 size={14} />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PlanDock({ mode, onExit }: { mode: SessionMode; onExit: () => void }) {
+  const steps = mode.plan_steps ?? [];
+  if (!mode.plan_active && steps.length === 0) return null;
+  if (steps.length > 0 && steps.every((step) => step.status === 'completed')) return null;
+  const completed = steps.filter((step) => step.status === 'completed').length;
+  return (
+    <div className="plan-dock">
+      <div className="plan-dock-head">
+        <span className="plan-dock-label">{mode.plan_active ? '计划模式' : '执行计划'}</span>
+        {steps.length > 0 && (
+          <span className="plan-dock-progress">
+            {completed}/{steps.length}
+          </span>
+        )}
+        {mode.plan_active && (
+          <button type="button" className="plan-dock-exit" onClick={onExit}>
+            退出
+          </button>
+        )}
+      </div>
+      {steps.length === 0 ? (
+        <div className="plan-dock-empty">
+          <LoaderCircle className="spin" size={12} />
+          正在设计执行步骤…
+        </div>
+      ) : (
+        <div className="plan-dock-steps">
+          {steps.map((step, index) => (
+            <div className={`plan-step ${step.status}`} key={`${index}-${step.title}`}>
+              {step.status === 'completed' ? (
+                <Check size={12} />
+              ) : step.status === 'in_progress' ? (
+                <LoaderCircle className="spin" size={12} />
+              ) : (
+                <span className="plan-step-dot" />
+              )}
+              <span>{step.title}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Workbench() {
   const {
     tasks,
@@ -305,10 +457,14 @@ export function Workbench() {
     ? SLASH_COMMANDS.filter((item) => item.command.startsWith(slashInput))
     : [];
   const [detailsOpen, setDetailsOpen] = useState(true);
+  useEffect(() => {
+    setComposerCommand(null);
+  }, [selectedId]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [info, setInfo] = useState<string | null>(null);
   const [launchMode, setLaunchMode] = useState<'chat' | 'work'>('work');
   const [pendingMode, setPendingMode] = useState<'goal' | 'plan' | null>(null);
+  const [composerCommand, setComposerCommand] = useState<'goal' | 'plan' | null>(null);
   const [workspacePrompt, setWorkspacePrompt] = useState<{ text: string } | null>(null);
   const [officePanel, setOfficePanel] = useState<'knowledge' | 'skills' | 'plugins' | 'mcp' | null>(
     null,
@@ -367,8 +523,51 @@ export function Workbench() {
     if (picked) await setWorkspace(picked, sessionId);
   }
 
-  function handleComposerSubmit(event: FormEvent) {
+  function beginComposerCommand(command: 'goal' | 'plan') {
+    setComposerCommand(command);
+    clearEditor();
+    editor.current?.focus();
+  }
+
+  async function submitComposerCommand(command: 'goal' | 'plan') {
+    const text = editorText().trim();
+    setComposerCommand(null);
+    clearEditor();
+    if (!text) {
+      if (command === 'plan') {
+        setPendingMode('plan');
+        setInfo('Plan mode 已选择：下一条消息会以计划模式发送。');
+      } else {
+        setInfo('用法：在 /目标 后输入要实现的目标。');
+      }
+      return;
+    }
+    if (command === 'plan' && text.toLowerCase() === 'off') {
+      if (selectedId) await setPlanMode(false);
+      setInfo('Plan mode 已关闭。');
+      return;
+    }
+    if (command === 'goal' && ['pause', 'resume', 'clear'].includes(text.toLowerCase())) {
+      if (!selectedId) {
+        setInfo('请先选择一个会话，再控制它的目标。');
+        return;
+      }
+      await updateGoal(text.toLowerCase() as 'pause' | 'resume' | 'clear');
+      return;
+    }
+    if (command === 'goal') {
+      await submit(undefined, text, undefined, 'goal', text, '/goal');
+    } else {
+      await submit(undefined, text, undefined, 'plan', undefined, '/plan');
+    }
+  }
+
+  async function handleComposerSubmit(event: FormEvent) {
     event.preventDefault();
+    if (composerCommand) {
+      await submitComposerCommand(composerCommand);
+      return;
+    }
     const text = editorText().trim();
     if (!text) return;
     if (text === '/') {
@@ -386,7 +585,7 @@ export function Workbench() {
     if (pendingMode === 'plan') {
       setPendingMode(null);
       clearEditor();
-      void submit(undefined, text, undefined, 'plan');
+      void submit(undefined, text, undefined, 'plan', undefined, '/plan');
       return;
     }
     if (launchMode === 'work' && !selectedId) {
@@ -455,7 +654,7 @@ export function Workbench() {
       return;
     }
     clearEditor();
-    await submit(undefined, argument, undefined, 'goal', argument);
+    await submit(undefined, argument, undefined, 'goal', argument, '/goal');
   }
 
   async function handlePlanCommand(text: string) {
@@ -469,7 +668,7 @@ export function Workbench() {
     }
     if (argument) {
       clearEditor();
-      await submit(undefined, argument, undefined, 'plan');
+      await submit(undefined, argument, undefined, 'plan', undefined, '/plan');
       return;
     }
     if (selectedId) {
@@ -1100,7 +1299,15 @@ export function Workbench() {
                       ) : (
                         <div className="chat-row user">
                           <div className="chat-bubble user">
-                            <pre>{message.text}</pre>
+                            <pre>
+                              {turn.command && (
+                                <span className="message-command-token">
+                                  /{turn.command === '/goal' ? '目标' : '计划'}
+                                </span>
+                              )}
+                              {turn.command ? ' ' : ''}
+                              {message.text}
+                            </pre>
                             {messageAttachments.length > 0 && (
                               <div className="message-attachments">
                                 {messageAttachments.map((attachment) => (
@@ -1456,10 +1663,37 @@ export function Workbench() {
                 <button onClick={() => void refresh()}>重新连接</button>
               </div>
             )}
+            {mode?.goal && selectedId && (
+              <GoalDock
+                goal={mode.goal}
+                onEdit={(objective) => void updateGoal('edit', selectedId, objective)}
+                onPause={() => void updateGoal('pause', selectedId)}
+                onResume={() => void updateGoal('resume', selectedId)}
+                onClear={() => void updateGoal('clear', selectedId)}
+              />
+            )}
+            {mode && selectedId && <PlanDock mode={mode} onExit={() => void setPlanMode(false)} />}
             <form className="composer" onSubmit={handleComposerSubmit}>
               <label className="sr-only" htmlFor="task-prompt">
                 工作任务内容
               </label>
+              {composerCommand && (
+                <div className="composer-command-row">
+                  <span className="composer-command-token">
+                    /{composerCommand === 'goal' ? '目标' : '计划'}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="取消命令"
+                    onClick={() => {
+                      setComposerCommand(null);
+                      clearEditor();
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
               {attachmentError && (
                 <div className="attachment-error" role="alert">
                   <span>{attachmentError}</span>
@@ -1490,9 +1724,26 @@ export function Workbench() {
                 contentEditable
                 role="textbox"
                 aria-multiline="true"
-                data-placeholder="描述你想完成的工作，让想法开始发生…"
+                data-placeholder={
+                  composerCommand === 'goal'
+                    ? '输入目标，智能体将持续执行…'
+                    : composerCommand === 'plan'
+                      ? '输入需求，智能体先设计步骤…'
+                      : '发消息或创建任务，/ 调用指令'
+                }
                 suppressContentEditableWarning
-                onInput={() => setPrompt(editorText())}
+                onInput={() => {
+                  const text = editorText();
+                  if (/^\s*\/goal\s$/i.test(text)) {
+                    beginComposerCommand('goal');
+                    return;
+                  }
+                  if (/^\s*\/plan\s$/i.test(text)) {
+                    beginComposerCommand('plan');
+                    return;
+                  }
+                  setPrompt(text);
+                }}
                 onPaste={(event) => {
                   const files = Array.from(event.clipboardData.files ?? []);
                   if (files.length > 0) {
@@ -1567,7 +1818,9 @@ export function Workbench() {
                       aria-selected={false}
                       key={item.command}
                       onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => applySlashCommand(item.insert)}
+                      onClick={() =>
+                        beginComposerCommand(item.command === '/goal' ? 'goal' : 'plan')
+                      }
                     >
                       <code>{item.hint}</code>
                       <span>{item.label}</span>
@@ -1987,29 +2240,6 @@ export function Workbench() {
             )}
           </div>
         </div>
-        {mode && (mode.goal || mode.plan_active) && (
-          <div className="detail-section">
-            <span className="section-label">
-              Agent 模式 <span>{mode.goal ? 'GOAL' : 'PLAN'}</span>
-            </span>
-            {mode.goal && <p className="workspace-path">{mode.goal.objective}</p>}
-            <div className="workspace-actions">
-              {mode.goal && (
-                <button
-                  onClick={() =>
-                    void updateGoal(mode.goal?.phase === 'active' ? 'pause' : 'resume')
-                  }
-                >
-                  {mode.goal?.phase === 'active' ? '暂停目标' : '恢复目标'}
-                </button>
-              )}
-              {mode.goal && <button onClick={() => void updateGoal('clear')}>清除目标</button>}
-              {mode.plan_active && (
-                <button onClick={() => void setPlanMode(false)}>退出计划</button>
-              )}
-            </div>
-          </div>
-        )}
         <div className="detail-section">
           <span className="section-label">
             对话产物 <span>{artifacts.length}</span>

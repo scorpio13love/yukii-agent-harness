@@ -172,7 +172,8 @@ async fn goal_and_plan_modes_are_persisted_for_a_new_session() {
                         "prompt": "完成长期报告",
                         "target": "cloud_office",
                         "mode": "goal",
-                        "goal_objective": "完成长期报告"
+                        "goal_objective": "完成长期报告",
+                        "command": "/goal"
                     })
                     .to_string(),
                 ))
@@ -186,6 +187,7 @@ async fn goal_and_plan_modes_are_persisted_for_a_new_session() {
     let mode = store.session_mode(&task.conversation_id).unwrap().unwrap();
     assert_eq!(mode["goal"]["objective"], "完成长期报告");
     assert_eq!(mode["goal"]["phase"], "active");
+    assert_eq!(task.command.as_deref(), Some("/goal"));
 
     let response = app
         .clone()
@@ -206,7 +208,18 @@ async fn goal_and_plan_modes_are_persisted_for_a_new_session() {
     store
         .set_plan_pending(&task.conversation_id, "# 计划\n\n先检查再执行")
         .unwrap();
+    store
+        .set_plan_steps(
+            &task.conversation_id,
+            &serde_json::json!([
+                {"title": "检查现状", "status": "completed"},
+                {"title": "执行修改", "status": "in_progress"},
+                {"title": "验证结果", "status": "pending"}
+            ]),
+        )
+        .unwrap();
     let response = app
+        .clone()
         .oneshot(
             Request::post(format!(
                 "/api/sessions/{}/plan/decision",
@@ -225,7 +238,23 @@ async fn goal_and_plan_modes_are_persisted_for_a_new_session() {
     let mode = store.session_mode(&task.conversation_id).unwrap().unwrap();
     assert_eq!(mode["plan_active"], false);
     assert!(mode["pending_plan"].is_null());
+    assert_eq!(mode["plan_steps"].as_array().unwrap().len(), 3);
+    assert_eq!(mode["plan_steps"][1]["title"], "执行修改");
     assert_eq!(store.conversation(&task.conversation_id).unwrap().len(), 2);
+
+    let response = app
+        .oneshot(
+            Request::post(format!("/api/sessions/{}/plan", task.conversation_id))
+                .header("host", "localhost:8765")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::json!({"active": false}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let mode = store.session_mode(&task.conversation_id).unwrap().unwrap();
+    assert!(mode["plan_steps"].as_array().unwrap().is_empty());
 
     let _ = std::fs::remove_dir_all(root);
 }

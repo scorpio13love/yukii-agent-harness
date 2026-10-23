@@ -31,6 +31,7 @@ enum Kind {
     UpdateGoal,
     EnterPlan,
     ExitPlan,
+    UpdatePlan,
 }
 
 #[derive(Deserialize)]
@@ -56,6 +57,17 @@ struct PlanInput {
     plan: String,
 }
 
+#[derive(Deserialize)]
+struct UpdatePlanInput {
+    steps: Vec<PlanStepInput>,
+}
+
+#[derive(Deserialize)]
+struct PlanStepInput {
+    title: String,
+    status: String,
+}
+
 #[async_trait]
 impl ToolCatalog for ModeTools {
     async fn tools(&self) -> Result<Vec<Arc<dyn Tool>>, RepositoryError> {
@@ -65,6 +77,7 @@ impl ToolCatalog for ModeTools {
             Kind::UpdateGoal,
             Kind::EnterPlan,
             Kind::ExitPlan,
+            Kind::UpdatePlan,
         ]
         .into_iter()
         .map(|kind| {
@@ -126,6 +139,31 @@ impl Tool for ModeTool {
                     "type":"object",
                     "properties":{"plan":{"type":"string","maxLength":20000}},
                     "required":["plan"],
+                    "additionalProperties":false
+                }),
+            ),
+            Kind::UpdatePlan => (
+                "update_plan",
+                "维护当前执行计划的步骤状态。设计计划后、以及每完成一步后调用；传入完整步骤数组，界面会把状态固定在输入框上方，全部 completed 后自动隐藏。",
+                json!({
+                    "type":"object",
+                    "properties":{
+                        "steps":{
+                            "type":"array",
+                            "minItems":1,
+                            "maxItems":20,
+                            "items":{
+                                "type":"object",
+                                "properties":{
+                                    "title":{"type":"string","maxLength":200},
+                                    "status":{"type":"string","enum":["pending","in_progress","completed"]}
+                                },
+                                "required":["title","status"],
+                                "additionalProperties":false
+                            }
+                        }
+                    },
+                    "required":["steps"],
                     "additionalProperties":false
                 }),
             ),
@@ -244,6 +282,30 @@ impl Tool for ModeTool {
                     .map_err(|_| "进入计划模式失败")?;
                 Ok(ToolEffect::Result(mode))
             }
+            Kind::UpdatePlan => {
+                let input: UpdatePlanInput =
+                    serde_json::from_value(arguments).map_err(|_| "计划步骤参数无效")?;
+                if input.steps.is_empty() || input.steps.len() > 20 {
+                    return Err("计划步骤需要 1–20 项".into());
+                }
+                let mut steps = Vec::with_capacity(input.steps.len());
+                for step in input.steps {
+                    let title = step.title.trim();
+                    if title.is_empty() || title.chars().count() > 200 {
+                        return Err("步骤标题需要 1–200 字符".into());
+                    }
+                    let status = match step.status.as_str() {
+                        "pending" | "in_progress" | "completed" => step.status,
+                        _ => return Err("步骤状态无效".into()),
+                    };
+                    steps.push(json!({"title": title, "status": status}));
+                }
+                let mode = self
+                    .store
+                    .set_plan_steps(&session, &Value::Array(steps))
+                    .map_err(|_| "更新计划步骤失败")?;
+                Ok(ToolEffect::Result(mode))
+            }
             Kind::ExitPlan => {
                 let input: PlanInput =
                     serde_json::from_value(arguments).map_err(|_| "计划参数无效")?;
@@ -253,6 +315,22 @@ impl Tool for ModeTool {
                 self.store
                     .set_plan_pending(&session, &input.plan)
                     .map_err(|_| "提交计划评审失败")?;
+                let current = self
+                    .store
+                    .session_mode(&session)
+                    .map_err(|_| "读取计划步骤失败")?;
+                let has_steps = current
+                    .as_ref()
+                    .and_then(|mode| mode["plan_steps"].as_array())
+                    .is_some_and(|steps| !steps.is_empty());
+                if !has_steps {
+                    let parsed = parse_plan_steps(&input.plan);
+                    if !parsed.is_empty() {
+                        self.store
+                            .set_plan_steps(&session, &Value::Array(parsed))
+                            .map_err(|_| "保存计划步骤失败")?;
+                    }
+                }
                 Ok(ToolEffect::Result(json!({
                     "approved": false,
                     "pending_review": true,
@@ -262,4 +340,47 @@ impl Tool for ModeTool {
             }
         }
     }
+}
+
+/// 从计划 Markdown 的列表/编号项提取初始步骤，供输入框上方的执行计划条立即展示。
+fn parse_plan_steps(plan: &str) -> Vec<Value> {
+    let mut steps = Vec::new();
+    for line in plan.lines() {
+        let text = line.trim();
+        if text.is_empty() || text.starts_with('#') {
+            continue;
+        }
+        let parsed = if let Some(rest) = text.strip_prefix("- [ ] ") {
+            Some((rest, "pending"))
+        } else if let Some(rest) = text
+            .strip_prefix("- [x] ")
+            .or_else(|| text.strip_prefix("- [X] "))
+        {
+            Some((rest, "completed"))
+        } else if let Some(rest) = text.strip_prefix("- ").or_else(|| text.strip_prefix("* ")) {
+            Some((rest, "pending"))
+        } else if let Some((head, rest)) = text.split_once(". ") {
+            head.chars()
+                .all(|ch| ch.is_ascii_digit())
+                .then_some((rest, "pending"))
+        } else if let Some((head, rest)) = text.split_once(") ") {
+            head.chars()
+                .all(|ch| ch.is_ascii_digit())
+                .then_some((rest, "pending"))
+        } else {
+            None
+        };
+        let Some((title, status)) = parsed else {
+            continue;
+        };
+        let title = title.trim().trim_end_matches('*').trim();
+        if title.is_empty() {
+            continue;
+        }
+        steps.push(json!({"title": title, "status": status}));
+        if steps.len() >= 12 {
+            break;
+        }
+    }
+    steps
 }

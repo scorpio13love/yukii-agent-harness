@@ -374,6 +374,7 @@ impl TaskStore {
             target: input.target,
             status: TaskStatus::Queued,
             created_at: now(),
+            command: None,
             result: None,
             error: None,
             input_tokens: 0,
@@ -473,6 +474,17 @@ impl TaskStore {
     pub fn get(&self, id: &str) -> Result<Task, StoreError> {
         let connection = self.connection.lock().map_err(|_| StoreError::Lock)?;
         read_task(&connection, id)
+    }
+
+    pub fn set_task_command(&self, id: &str, command: &str) -> Result<Task, StoreError> {
+        let connection = self.connection.lock().map_err(|_| StoreError::Lock)?;
+        let mut task = read_task(&connection, id)?;
+        task.command = Some(command.to_owned());
+        connection.execute(
+            "UPDATE tasks SET payload=?2 WHERE id=?1",
+            params![id, serde_json::to_string(&task)?],
+        )?;
+        Ok(task)
     }
 
     pub fn events(&self, id: &str) -> Result<Vec<TaskEvent>, StoreError> {
@@ -1373,9 +1385,15 @@ impl TaskStore {
         let connection = self.connection.lock().map_err(|_| StoreError::Lock)?;
         Ok(connection
             .query_row(
-                "SELECT goal_objective,goal_phase,goal_rounds,goal_max_rounds,plan_active,updated_at,pending_plan FROM session_modes WHERE session_id=?1",
+                "SELECT goal_objective,goal_phase,goal_rounds,goal_max_rounds,plan_active,updated_at,pending_plan,plan_steps FROM session_modes WHERE session_id=?1",
                 [session_id],
                 |row| {
+                    let plan_steps = row
+                        .get::<_, Option<String>>(7)
+                        .ok()
+                        .flatten()
+                        .and_then(|value| serde_json::from_str::<serde_json::Value>(&value).ok())
+                        .unwrap_or_else(|| serde_json::json!([]));
                     Ok(serde_json::json!({
                         "session_id": session_id,
                         "goal": row.get::<_, Option<String>>(0)?.map(|objective| serde_json::json!({
@@ -1387,6 +1405,7 @@ impl TaskStore {
                         "plan_active": row.get::<_, i64>(4).unwrap_or(0) != 0,
                         "updated_at": row.get::<_, i64>(5).unwrap_or(0),
                         "pending_plan": row.get::<_, Option<String>>(6).unwrap_or(None),
+                        "plan_steps": plan_steps,
                     }))
                 },
             )
@@ -1446,13 +1465,42 @@ impl TaskStore {
     ) -> Result<serde_json::Value, StoreError> {
         let connection = self.connection.lock().map_err(|_| StoreError::Lock)?;
         connection.execute(
-            "INSERT INTO session_modes(session_id,goal_objective,goal_phase,goal_rounds,goal_max_rounds,plan_active,updated_at,pending_plan)
-             VALUES(?1,NULL,'active',0,6,?2,?3,NULL)
-             ON CONFLICT(session_id) DO UPDATE SET plan_active=excluded.plan_active,updated_at=excluded.updated_at,pending_plan=NULL",
+            "INSERT INTO session_modes(session_id,goal_objective,goal_phase,goal_rounds,goal_max_rounds,plan_active,updated_at,pending_plan,plan_steps)
+             VALUES(?1,NULL,'active',0,6,?2,?3,NULL,NULL)
+             ON CONFLICT(session_id) DO UPDATE SET plan_active=excluded.plan_active,updated_at=excluded.updated_at,pending_plan=NULL,plan_steps=CASE WHEN excluded.plan_active=1 THEN NULL ELSE session_modes.plan_steps END",
             params![session_id, i64::from(active), now()],
         )?;
         drop(connection);
         self.session_mode(session_id)?.ok_or(StoreError::NotFound)
+    }
+
+    pub fn set_plan_steps(
+        &self,
+        session_id: &str,
+        steps: &serde_json::Value,
+    ) -> Result<serde_json::Value, StoreError> {
+        let connection = self.connection.lock().map_err(|_| StoreError::Lock)?;
+        let changed = connection.execute(
+            "UPDATE session_modes SET plan_steps=?2,updated_at=?3 WHERE session_id=?1",
+            params![session_id, steps.to_string(), now()],
+        )?;
+        drop(connection);
+        if changed == 0 {
+            return Err(StoreError::NotFound);
+        }
+        self.session_mode(session_id)?.ok_or(StoreError::NotFound)
+    }
+
+    pub fn clear_plan_steps(&self, session_id: &str) -> Result<serde_json::Value, StoreError> {
+        let connection = self.connection.lock().map_err(|_| StoreError::Lock)?;
+        connection.execute(
+            "UPDATE session_modes SET plan_steps=NULL,updated_at=?2 WHERE session_id=?1",
+            params![session_id, now()],
+        )?;
+        drop(connection);
+        Ok(self.session_mode(session_id)?.unwrap_or_else(|| {
+            serde_json::json!({"session_id": session_id, "goal": null, "plan_active": false, "pending_plan": null, "plan_steps": [], "updated_at": now()})
+        }))
     }
 
     pub fn set_plan_pending(
@@ -1698,6 +1746,7 @@ impl TaskStore {
             target,
             status: TaskStatus::Planning,
             created_at: now(),
+            command: None,
             result: None,
             error: None,
             input_tokens: 0,

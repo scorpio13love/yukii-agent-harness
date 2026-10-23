@@ -63,6 +63,7 @@ pub trait TaskRepository: Send + Sync {
     fn conversation(&self, id: &str) -> Result<Vec<Task>, RepositoryError>;
     fn list(&self) -> Result<Vec<Task>, RepositoryError>;
     fn get(&self, id: &str) -> Result<Task, RepositoryError>;
+    fn set_task_command(&self, id: &str, command: &str) -> Result<Task, RepositoryError>;
     fn events(&self, id: &str) -> Result<Vec<TaskEvent>, RepositoryError>;
     fn advance(
         &self,
@@ -171,6 +172,12 @@ pub trait TaskRepository: Send + Sync {
         plan: &str,
     ) -> Result<serde_json::Value, RepositoryError>;
     fn clear_plan_pending(&self, session_id: &str) -> Result<serde_json::Value, RepositoryError>;
+    fn set_plan_steps(
+        &self,
+        session_id: &str,
+        steps: &serde_json::Value,
+    ) -> Result<serde_json::Value, RepositoryError>;
+    fn clear_plan_steps(&self, session_id: &str) -> Result<serde_json::Value, RepositoryError>;
     fn increment_goal_round(&self, session_id: &str) -> Result<serde_json::Value, RepositoryError>;
     fn active_goals(&self) -> Result<Vec<serde_json::Value>, RepositoryError>;
     #[allow(clippy::too_many_arguments)]

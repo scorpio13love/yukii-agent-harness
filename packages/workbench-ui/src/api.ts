@@ -33,6 +33,7 @@ const taskSchema = z.object({
     })
     .optional(),
   created_at: z.number(),
+  command: z.string().nullable().optional(),
   result: z.string().nullable().optional(),
   error: z.string().nullable().optional(),
   input_tokens: z.number().default(0),
@@ -103,11 +104,17 @@ const goalSchema = z.object({
   max_rounds: z.number(),
 });
 
+const planStepSchema = z.object({
+  title: z.string(),
+  status: z.enum(['pending', 'in_progress', 'completed']),
+});
+
 const sessionModeRecordSchema = z.object({
   session_id: z.string(),
   goal: goalSchema.nullable(),
   plan_active: z.boolean(),
   pending_plan: z.string().nullable(),
+  plan_steps: z.array(planStepSchema).default([]),
   updated_at: z.number(),
 });
 
@@ -453,6 +460,7 @@ export const httpApi = {
     workspacePath?: string,
     mode?: 'goal' | 'plan',
     goalObjective?: string,
+    command?: '/goal' | '/plan',
   ) =>
     request('/tasks', taskSchema, {
       method: 'POST',
@@ -468,6 +476,7 @@ export const httpApi = {
         ...(workspacePath ? { workspace_path: workspacePath } : {}),
         ...(mode ? { mode } : {}),
         ...(goalObjective ? { goal_objective: goalObjective } : {}),
+        ...(command ? { command } : {}),
       }),
     }),
   cancelTask: (id: string) =>
