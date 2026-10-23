@@ -143,7 +143,7 @@ impl Tool for ModeTool {
                 }),
             ),
             Kind::UpdatePlan => (
-                "update_plan",
+                "update_plan_steps",
                 "维护当前执行计划的步骤状态。设计计划后、以及每完成一步后调用；传入完整步骤数组，界面会把状态固定在输入框上方，全部 completed 后自动隐藏。",
                 json!({
                     "type":"object",

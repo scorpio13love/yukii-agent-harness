@@ -1015,7 +1015,7 @@ async fn decide_session_plan(
         store.create_once(
             CreateTask {
                 conversation_id: Some(session_id),
-                prompt: "用户已批准你提交的计划。请开始执行该计划：先检查当前工作区与相关文件，再逐步完成并验证结果。每完成一步后调用 update_plan 更新完整步骤状态；全部完成后把所有步骤标记为 completed。".into(),
+                prompt: "用户已批准你提交的计划。请开始执行该计划：先检查当前工作区与相关文件，再逐步完成并验证结果。每完成一步后调用 update_plan_steps 更新完整步骤状态；全部完成后把所有步骤标记为 completed。".into(),
                 target: ExecutionTarget::CloudOffice,
             },
             &key,

@@ -562,6 +562,6 @@ fn append_mode_prompt(system: &mut String, mode: Option<&serde_json::Value>) {
         ));
     }
     if mode["plan_active"].as_bool() == Some(true) {
-        system.push_str("\n\n--- Plan mode ---\n你正在计划模式。先探索、阅读和设计，不要执行有副作用的修改。先调用 update_plan 维护 2–8 个具体执行步骤，再调用 exit_plan_mode 提交以 # 标题开头的完整 Markdown 计划。用户批准后逐步执行，每完成一步调用 update_plan 更新完整步骤状态；全部完成后把所有步骤标记为 completed。用户可用 /plan off 退出。");
+        system.push_str("\n\n--- Plan mode ---\n你正在计划模式。先探索、阅读和设计，不要执行有副作用的修改。先调用 update_plan_steps 维护 2–8 个具体执行步骤，再调用 exit_plan_mode 提交以 # 标题开头的完整 Markdown 计划。用户批准后逐步执行，每完成一步调用 update_plan_steps 更新完整步骤状态；全部完成后把所有步骤标记为 completed。用户可用 /plan off 退出。");
     }
 }
