@@ -19,10 +19,10 @@ import {
   GitBranch,
   FileText,
   Folder,
-  FolderOpen,
   LayoutGrid,
   LoaderCircle,
   Monitor,
+  MoreHorizontal,
   MousePointer2,
   PanelLeft,
   PanelRight,
@@ -583,6 +583,14 @@ export function Workbench() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [info, setInfo] = useState<string | null>(null);
   const [launchMode, setLaunchMode] = useState<'chat' | 'work'>('work');
+  const [pendingWorkspacePath, setPendingWorkspacePath] = useState<string | null>(null);
+  const [rowMenu, setRowMenu] = useState<{
+    kind: 'session' | 'workspace';
+    id: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const rowMenuTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pendingMode, setPendingMode] = useState<'goal' | 'plan' | null>(null);
   const [composerCommand, setComposerCommand] = useState<'goal' | 'plan' | null>(null);
   const [workspacePrompt, setWorkspacePrompt] = useState<{ text: string } | null>(null);
@@ -598,6 +606,44 @@ export function Workbench() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [attachMenu, setAttachMenu] = useState(false);
+  useEffect(() => {
+    if (!rowMenu) return;
+    const close = (event: PointerEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest('.row-popover') || target.closest('.row-menu-button')) return;
+      setRowMenu(null);
+    };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [rowMenu]);
+
+  useEffect(() => {
+    if (!rowMenu) return;
+    const key = `${rowMenu.kind}:${rowMenu.id}`;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onMove = (event: PointerEvent) => {
+      const target = event.target as HTMLElement;
+      const row = [...document.querySelectorAll('[data-row-menu]')].find(
+        (element) => element.getAttribute('data-row-menu') === key,
+      );
+      const popover = document.querySelector('.row-popover');
+      if (row?.contains(target) || popover?.contains(target)) {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        return;
+      }
+      if (timer) return;
+      timer = setTimeout(() => setRowMenu(null), 180);
+    };
+    document.addEventListener('pointermove', onMove);
+    return () => {
+      document.removeEventListener('pointermove', onMove);
+      if (timer) clearTimeout(timer);
+    };
+  }, [rowMenu]);
+
   useEffect(() => {
     if (!attachMenu) return;
     const close = (event: PointerEvent) => {
@@ -622,6 +668,7 @@ export function Workbench() {
   const [selectedTrace, setSelectedTrace] = useState<TrajectoryRecord | null>(null);
   useEffect(() => {
     setSelectedTrace(null);
+    if (selectedId) setPendingWorkspacePath(null);
   }, [selectedId]);
   const [traceTab, setTraceTab] = useState('overview');
   const [traceQuery, setTraceQuery] = useState('');
@@ -636,6 +683,30 @@ export function Workbench() {
 
   function newTask() {
     setSelectedId(null);
+    setPendingWorkspacePath(null);
+    setRowMenu(null);
+    clearDraft();
+    resetComposer();
+    editor.current?.focus();
+  }
+
+  function keepRowMenu() {
+    if (rowMenuTimer.current) {
+      clearTimeout(rowMenuTimer.current);
+      rowMenuTimer.current = null;
+    }
+  }
+
+  function closeRowMenuSoon() {
+    keepRowMenu();
+    rowMenuTimer.current = setTimeout(() => setRowMenu(null), 180);
+  }
+
+  function startWorkspaceConversation(path: string) {
+    setSelectedId(null);
+    setPendingWorkspacePath(path);
+    setRowMenu(null);
+    setLaunchMode('work');
     clearDraft();
     resetComposer();
     editor.current?.focus();
@@ -701,10 +772,12 @@ export function Workbench() {
       await updateGoal('edit', selectedId, objective);
       return;
     }
+    const workspacePath = pendingWorkspacePath ?? undefined;
+    setPendingWorkspacePath(null);
     if (command === 'goal') {
-      await submit(undefined, text, undefined, 'goal', text, '/goal');
+      await submit(undefined, text, workspacePath, 'goal', text, '/goal');
     } else {
-      await submit(undefined, text, undefined, 'plan', undefined, '/plan');
+      await submit(undefined, text, workspacePath, 'plan', undefined, '/plan');
     }
   }
 
@@ -729,9 +802,17 @@ export function Workbench() {
       return;
     }
     if (pendingMode === 'plan') {
+      const path = pendingWorkspacePath ?? undefined;
       setPendingMode(null);
+      setPendingWorkspacePath(null);
       clearEditor();
-      void submit(undefined, text, undefined, 'plan', undefined, '/plan');
+      void submit(undefined, text, path, 'plan', undefined, '/plan');
+      return;
+    }
+    if (pendingWorkspacePath) {
+      const path = pendingWorkspacePath;
+      setPendingWorkspacePath(null);
+      void submit(undefined, text, path);
       return;
     }
     if (launchMode === 'work' && !selectedId) {
@@ -859,8 +940,10 @@ export function Workbench() {
       setInfo(`Goal 已 ${action}。`);
       return;
     }
+    const workspacePath = pendingWorkspacePath ?? undefined;
+    setPendingWorkspacePath(null);
     clearEditor();
-    await submit(undefined, argument, undefined, 'goal', argument, '/goal');
+    await submit(undefined, argument, workspacePath, 'goal', argument, '/goal');
   }
 
   async function handlePlanCommand(text: string) {
@@ -873,8 +956,10 @@ export function Workbench() {
       return;
     }
     if (argument) {
+      const workspacePath = pendingWorkspacePath ?? undefined;
+      setPendingWorkspacePath(null);
       clearEditor();
-      await submit(undefined, argument, undefined, 'plan', undefined, '/plan');
+      await submit(undefined, argument, workspacePath, 'plan', undefined, '/plan');
       return;
     }
     if (selectedId) {
@@ -936,36 +1021,61 @@ export function Workbench() {
 
   const projectSessions = tasks.filter((task) => workspaces[task.session_id]?.kind === 'project');
   const recentSessions = tasks.filter((task) => workspaces[task.session_id]?.kind !== 'project');
+  const projectGroups = (() => {
+    const groups = new Map<string, { path: string; name: string; sessions: Task[] }>();
+    for (const task of projectSessions) {
+      const workspace = workspaces[task.session_id];
+      if (!workspace) continue;
+      const group = groups.get(workspace.path) ?? {
+        path: workspace.path,
+        name: workspace.name,
+        sessions: [],
+      };
+      group.sessions.push(task);
+      groups.set(workspace.path, group);
+    }
+    return [...groups.values()];
+  })();
   function renderSession(task: Task): ReactElement {
     const isProject = workspaces[task.session_id]?.kind === 'project';
     return (
-      <div className="history-item-wrap" key={task.session_id}>
+      <div
+        className={`history-item-wrap ${
+          rowMenu?.kind === 'session' && rowMenu.id === task.session_id ? 'menu-open' : ''
+        }`}
+        key={task.session_id}
+        data-row-menu={`session:${task.session_id}`}
+        onMouseLeave={closeRowMenuSoon}
+      >
         <button
           data-session-id={task.session_id}
           className={`history-item ${selectedId === task.session_id ? 'selected' : ''}`}
-          onClick={() => setSelectedId(task.session_id)}
+          onClick={() => {
+            setRowMenu(null);
+            setSelectedId(task.session_id);
+          }}
         >
           {isProject ? <Folder size={15} /> : <FileText size={15} />}
           <Marquee text={splitMessage(task.session_title).text} />
         </button>
         <div className="history-actions">
-          <button title="Fork Session" onClick={() => void forkSession(task.session_id)}>
-            <GitBranch size={13} />
-          </button>
-          <button title="打开工作区" onClick={() => void openWorkspaceFolder(task.session_id)}>
-            <FolderOpen size={13} />
-          </button>
-          <button title="绑定项目目录" onClick={() => void pickWorkspace(task.session_id)}>
-            <Folder size={13} />
-          </button>
           <button
-            title="删除 Session"
-            onClick={async () => {
-              if (!window.confirm('删除这个 Session 及其全部记录？')) return;
-              await deleteSession(task.session_id);
+            type="button"
+            className="row-menu-button"
+            title="更多"
+            aria-label="更多会话操作"
+            onClick={(event) => {
+              event.stopPropagation();
+              const rect = event.currentTarget.getBoundingClientRect();
+              setRowMenu({
+                kind: 'session',
+                id: task.session_id,
+                x: Math.min(window.innerWidth - 170, Math.max(8, rect.right - 154)),
+                y: Math.min(window.innerHeight - 130, rect.bottom + 5),
+              });
             }}
           >
-            ×
+            <MoreHorizontal size={15} />
           </button>
         </div>
       </div>
@@ -1270,8 +1380,62 @@ export function Workbench() {
           {!loading && tasks.length > 0 && (
             <>
               <div className="history-group-title">项目</div>
-              {projectSessions.length > 0 ? (
-                projectSessions.map(renderSession)
+              {projectGroups.length > 0 ? (
+                projectGroups.map((group) => (
+                  <div className="workspace-group" key={group.path}>
+                    <div
+                      className={`workspace-group-head ${
+                        rowMenu?.kind === 'workspace' && rowMenu.id === group.path
+                          ? 'menu-open'
+                          : ''
+                      }`}
+                      data-row-menu={`workspace:${group.path}`}
+                      onMouseLeave={closeRowMenuSoon}
+                    >
+                      <button
+                        type="button"
+                        className="workspace-group-title"
+                        title={group.path}
+                        onClick={() => {
+                          setRowMenu(null);
+                          setSelectedId(group.sessions[0].session_id);
+                        }}
+                      >
+                        <Folder size={15} />
+                        <span className="workspace-group-name">{group.name}</span>
+                      </button>
+                      <div className="workspace-group-actions">
+                        <button
+                          type="button"
+                          title="在此工作区新建对话"
+                          aria-label="在此工作区新建对话"
+                          onClick={() => startWorkspaceConversation(group.path)}
+                        >
+                          <Plus size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          className="row-menu-button"
+                          title="更多"
+                          aria-label="更多工作区操作"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            const rect = event.currentTarget.getBoundingClientRect();
+                            setRowMenu({
+                              kind: 'workspace',
+                              id: group.path,
+                              x: Math.min(window.innerWidth - 170, Math.max(8, rect.right - 154)),
+                              y: Math.min(window.innerHeight - 130, rect.bottom + 5),
+                            });
+                          }}
+                        >
+                          <MoreHorizontal size={15} />
+                        </button>
+                      </div>
+                    </div>
+                    {group.sessions.map(renderSession)}
+                  </div>
+                ))
               ) : (
                 <p className="empty-history compact">还没有绑定项目的会话。</p>
               )}
@@ -1898,6 +2062,21 @@ export function Workbench() {
               <div className="error" role="alert">
                 <span>{error}</span>
                 <button onClick={() => void refresh()}>重新连接</button>
+              </div>
+            )}
+            {pendingWorkspacePath && (
+              <div className="pending-workspace">
+                <Folder size={14} />
+                <span>
+                  新对话 · {pendingWorkspacePath.split('/').at(-1) ?? pendingWorkspacePath}
+                </span>
+                <button
+                  type="button"
+                  aria-label="取消新对话"
+                  onClick={() => setPendingWorkspacePath(null)}
+                >
+                  ×
+                </button>
               </div>
             )}
             {mode?.goal && selectedId && (
@@ -2678,6 +2857,93 @@ export function Workbench() {
           </div>
         </div>
       )}
+      {rowMenu?.kind === 'session' &&
+        (() => {
+          const task = tasks.find((item) => item.session_id === rowMenu.id);
+          if (!task) return null;
+          return (
+            <div
+              className="row-popover"
+              style={{ left: rowMenu.x, top: rowMenu.y }}
+              onMouseEnter={keepRowMenu}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                onClick={() => {
+                  setRowMenu(null);
+                  void forkSession(task.session_id);
+                }}
+              >
+                Fork Session
+              </button>
+              <button
+                onClick={() => {
+                  setRowMenu(null);
+                  void openWorkspaceFolder(task.session_id);
+                }}
+              >
+                打开工作区
+              </button>
+              <button
+                onClick={() => {
+                  setRowMenu(null);
+                  void pickWorkspace(task.session_id);
+                }}
+              >
+                绑定项目目录
+              </button>
+              <button
+                className="danger"
+                onClick={async () => {
+                  if (!window.confirm('删除这个 Session 及其全部记录？')) return;
+                  setRowMenu(null);
+                  await deleteSession(task.session_id);
+                }}
+              >
+                删除 Session
+              </button>
+            </div>
+          );
+        })()}
+      {rowMenu?.kind === 'workspace' &&
+        (() => {
+          const group = projectGroups.find((item) => item.path === rowMenu.id);
+          if (!group) return null;
+          return (
+            <div
+              className="row-popover"
+              style={{ left: rowMenu.x, top: rowMenu.y }}
+              onMouseEnter={keepRowMenu}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                onClick={() => {
+                  setRowMenu(null);
+                  void openWorkspaceFolder(group.sessions[0].session_id);
+                }}
+              >
+                打开文件夹
+              </button>
+              <button
+                onClick={() => {
+                  void navigator.clipboard.writeText(group.path);
+                  setRowMenu(null);
+                  setInfo('已复制工作区路径。');
+                }}
+              >
+                复制路径
+              </button>
+              <button
+                onClick={() => {
+                  setRowMenu(null);
+                  startWorkspaceConversation(group.path);
+                }}
+              >
+                新建对话
+              </button>
+            </div>
+          );
+        })()}
       {info && <InfoDialog message={info} onClose={() => setInfo(null)} />}
     </div>
   );
