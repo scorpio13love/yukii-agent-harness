@@ -214,6 +214,47 @@ impl TaskRepository for TaskStore {
         TaskStore::clear_session_workspace(self, session_id).map_err(Into::into)
     }
 
+    fn session_mode(&self, session_id: &str) -> Result<Option<serde_json::Value>, RepositoryError> {
+        TaskStore::session_mode(self, session_id).map_err(Into::into)
+    }
+
+    fn set_goal(
+        &self,
+        session_id: &str,
+        objective: &str,
+        max_rounds: i64,
+    ) -> Result<serde_json::Value, RepositoryError> {
+        TaskStore::set_goal(self, session_id, objective, max_rounds).map_err(Into::into)
+    }
+
+    fn set_goal_phase(
+        &self,
+        session_id: &str,
+        phase: &str,
+    ) -> Result<serde_json::Value, RepositoryError> {
+        TaskStore::set_goal_phase(self, session_id, phase).map_err(Into::into)
+    }
+
+    fn clear_goal(&self, session_id: &str) -> Result<serde_json::Value, RepositoryError> {
+        TaskStore::clear_goal(self, session_id).map_err(Into::into)
+    }
+
+    fn set_plan_active(
+        &self,
+        session_id: &str,
+        active: bool,
+    ) -> Result<serde_json::Value, RepositoryError> {
+        TaskStore::set_plan_active(self, session_id, active).map_err(Into::into)
+    }
+
+    fn increment_goal_round(&self, session_id: &str) -> Result<serde_json::Value, RepositoryError> {
+        TaskStore::increment_goal_round(self, session_id).map_err(Into::into)
+    }
+
+    fn active_goals(&self) -> Result<Vec<serde_json::Value>, RepositoryError> {
+        TaskStore::active_goals(self).map_err(Into::into)
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn add_compaction(
         &self,

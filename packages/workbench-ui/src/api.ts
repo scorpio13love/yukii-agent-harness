@@ -96,6 +96,24 @@ const workspaceSchema = workspaceRecordSchema.nullable();
 
 export type SessionWorkspace = z.infer<typeof workspaceRecordSchema>;
 
+const goalSchema = z.object({
+  objective: z.string(),
+  phase: z.string(),
+  rounds: z.number(),
+  max_rounds: z.number(),
+});
+
+const sessionModeRecordSchema = z.object({
+  session_id: z.string(),
+  goal: goalSchema.nullable(),
+  plan_active: z.boolean(),
+  updated_at: z.number(),
+});
+
+const sessionModeSchema = sessionModeRecordSchema.nullable();
+
+export type SessionMode = z.infer<typeof sessionModeRecordSchema>;
+
 const memorySchema = z.object({
   id: z.string(),
   content: z.string(),
@@ -335,6 +353,23 @@ export const httpApi = {
       z.object({ cleared: z.boolean(), workspace: workspaceSchema }),
       { method: 'DELETE' },
     ),
+  sessionMode: (id: string) =>
+    request(`/sessions/${encodeURIComponent(id)}/mode`, z.object({ mode: sessionModeSchema })),
+  setSessionGoal: (id: string, objective: string, maxRounds = 6) =>
+    request(`/sessions/${encodeURIComponent(id)}/goal`, z.object({ mode: sessionModeSchema }), {
+      method: 'POST',
+      body: JSON.stringify({ objective, max_goal_rounds: maxRounds }),
+    }),
+  updateSessionGoal: (id: string, action: 'pause' | 'resume' | 'complete' | 'clear') =>
+    request(`/sessions/${encodeURIComponent(id)}/goal`, z.object({ mode: sessionModeSchema }), {
+      method: 'POST',
+      body: JSON.stringify({ action }),
+    }),
+  setSessionPlan: (id: string, active: boolean) =>
+    request(`/sessions/${encodeURIComponent(id)}/plan`, z.object({ mode: sessionModeSchema }), {
+      method: 'POST',
+      body: JSON.stringify({ active }),
+    }),
   subagents: (taskId: string) =>
     request(
       `/tasks/${encodeURIComponent(taskId)}/subagents`,
@@ -400,6 +435,9 @@ export const httpApi = {
     conversationId: string | null,
     _appName?: string,
     attachmentIds: string[] = [],
+    workspacePath?: string,
+    mode?: 'goal' | 'plan',
+    goalObjective?: string,
   ) =>
     request('/tasks', taskSchema, {
       method: 'POST',
@@ -408,7 +446,14 @@ export const httpApi = {
         'Idempotency-Key': idempotencyKey,
         ...(attachmentIds.length ? { 'X-Attachment-Ids': attachmentIds.join(',') } : {}),
       },
-      body: JSON.stringify({ prompt, target: 'cloud_office', session_id: conversationId }),
+      body: JSON.stringify({
+        prompt,
+        target: 'cloud_office',
+        session_id: conversationId,
+        ...(workspacePath ? { workspace_path: workspacePath } : {}),
+        ...(mode ? { mode } : {}),
+        ...(goalObjective ? { goal_objective: goalObjective } : {}),
+      }),
     }),
   cancelTask: (id: string) =>
     request(`/tasks/${encodeURIComponent(id)}/cancel`, taskSchema, { method: 'POST' }),
@@ -439,6 +484,10 @@ export function localApi(): typeof httpApi | null {
       workspace: { session_id: id, path, name: 'workspace', updated_at: 0, kind: 'project' },
     }),
     clearSessionWorkspace: async () => ({ cleared: true, workspace: null }),
+    sessionMode: async () => ({ mode: null }),
+    setSessionGoal: async () => ({ mode: null }),
+    updateSessionGoal: async () => ({ mode: null }),
+    setSessionPlan: async () => ({ mode: null }),
     subagents: async () => ({ subagents: [] }),
     cancelSubagent: async (_taskId: string, runId: string) => ({ cancelled: runId }),
     tools: async () => ({ tools: [] }),

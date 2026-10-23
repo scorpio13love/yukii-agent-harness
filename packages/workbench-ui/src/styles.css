@@ -2488,6 +2488,20 @@ button:hover:not(:disabled) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.agent-mode-chip {
+  flex-shrink: 0;
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: #eaf0ff;
+  color: #3861cc;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+}
+.agent-mode-chip.plan {
+  background: #f2ecff;
+  color: #7654c8;
+}
 .task-header {
   padding: 0 0 8px;
 }

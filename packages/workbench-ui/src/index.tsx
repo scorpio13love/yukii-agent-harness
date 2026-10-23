@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type ReactElement } from 'react';
+import { Fragment, useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react';
 import {
   ArrowUp,
   ArrowUpRight,
@@ -234,6 +234,9 @@ export function Workbench() {
     setWorkspace,
     workspace,
     workspaces,
+    mode,
+    setPlanMode,
+    updateGoal,
     reloadSession,
     deleteMemory,
     schedules,
@@ -262,6 +265,9 @@ export function Workbench() {
   const [detailsOpen, setDetailsOpen] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [info, setInfo] = useState<string | null>(null);
+  const [launchMode, setLaunchMode] = useState<'chat' | 'work'>('work');
+  const [pendingMode, setPendingMode] = useState<'goal' | 'plan' | null>(null);
+  const [workspacePrompt, setWorkspacePrompt] = useState<{ text: string } | null>(null);
   const [officePanel, setOfficePanel] = useState<'knowledge' | 'skills' | 'plugins' | 'mcp' | null>(
     null,
   );
@@ -304,14 +310,115 @@ export function Workbench() {
     editor.current?.focus();
   }
 
-  async function pickWorkspace(sessionId: string) {
+  async function chooseProjectPath(): Promise<string | null> {
     const desktop = (
       window as Window & {
         yukiiDesktop?: { selectWorkspace?: () => Promise<string | null> };
       }
     ).yukiiDesktop;
-    const picked = (await desktop?.selectWorkspace?.()) ?? window.prompt('工作区路径', '');
-    if (picked?.trim()) await setWorkspace(picked.trim(), sessionId);
+    const picked = (await desktop?.selectWorkspace?.()) ?? window.prompt('项目文件夹路径', '');
+    return picked?.trim() || null;
+  }
+
+  async function pickWorkspace(sessionId: string) {
+    const picked = await chooseProjectPath();
+    if (picked) await setWorkspace(picked, sessionId);
+  }
+
+  function handleComposerSubmit(event: FormEvent) {
+    event.preventDefault();
+    const text = editorText().trim();
+    if (!text) return;
+    if (/^\/goal(?=\s|$)/i.test(text)) {
+      void handleGoalCommand(text);
+      return;
+    }
+    if (/^\/plan(?=\s|$)/i.test(text)) {
+      void handlePlanCommand(text);
+      return;
+    }
+    if (pendingMode === 'plan') {
+      setPendingMode(null);
+      clearEditor();
+      void submit(undefined, text, undefined, 'plan');
+      return;
+    }
+    if (launchMode === 'work' && !selectedId) {
+      setWorkspacePrompt({ text });
+      return;
+    }
+    void submit(event, text);
+  }
+
+  function clearEditor() {
+    if (editor.current) editor.current.innerHTML = '';
+    setPrompt('');
+  }
+
+  async function handleGoalCommand(text: string) {
+    const argument = text.replace(/^\/goal\s*/i, '').trim();
+    if (!argument) {
+      if (mode?.goal) {
+        setInfo(
+          `Goal（${mode.goal.phase}）\n${mode.goal.objective}\n轮次：${mode.goal.rounds}/${mode.goal.max_rounds}\n可用：/goal pause、/goal resume、/goal clear`,
+        );
+      } else {
+        setInfo('用法：/goal <目标>。用于需要多轮持续推进的长期目标。');
+      }
+      return;
+    }
+    const action = argument.toLowerCase();
+    if (['pause', 'resume', 'clear', 'complete'].includes(action)) {
+      if (!selectedId) {
+        setInfo('请先选择一个会话，再控制它的 goal。');
+        return;
+      }
+      await updateGoal(action as 'pause' | 'resume' | 'clear' | 'complete');
+      clearEditor();
+      setInfo(`Goal 已 ${action}。`);
+      return;
+    }
+    clearEditor();
+    await submit(undefined, argument, undefined, 'goal', argument);
+  }
+
+  async function handlePlanCommand(text: string) {
+    const argument = text.replace(/^\/plan\s*/i, '').trim();
+    if (argument.toLowerCase() === 'off') {
+      if (selectedId) await setPlanMode(false);
+      setPendingMode(null);
+      clearEditor();
+      setInfo('Plan mode 已关闭。');
+      return;
+    }
+    if (argument) {
+      clearEditor();
+      await submit(undefined, argument, undefined, 'plan');
+      return;
+    }
+    if (selectedId) {
+      await setPlanMode(true);
+      clearEditor();
+      setInfo('Plan mode 已开启：先探索和设计方案，完成后提交计划。');
+      return;
+    }
+    setPendingMode('plan');
+    clearEditor();
+    setInfo('Plan mode 已选择：下一条消息会以计划模式发送。');
+  }
+
+  async function confirmWorkspaceChoice(useDefault: boolean) {
+    const pending = workspacePrompt;
+    if (!pending) return;
+    if (useDefault) {
+      setWorkspacePrompt(null);
+      await submit(undefined, pending.text);
+      return;
+    }
+    const picked = await chooseProjectPath();
+    if (!picked) return;
+    setWorkspacePrompt(null);
+    await submit(undefined, pending.text, picked);
   }
 
   async function openWorkspaceFolder(sessionId: string) {
@@ -582,7 +689,13 @@ export function Workbench() {
           <span className="brand-symbol">y</span> yukii
           <span className="brand-caption">WORKSPACE</span>
         </a>
-        <button className="new-task" onClick={newTask}>
+        <button
+          className="new-task"
+          onClick={() => {
+            setLaunchMode('work');
+            newTask();
+          }}
+        >
           <SquarePen size={18} />
           新工作任务
           <Plus size={16} />
@@ -702,6 +815,12 @@ export function Workbench() {
               >
                 {selected ? splitMessage(selected.session_title).text : '新任务'}
               </b>
+              {mode?.goal && mode.goal.phase === 'active' && (
+                <span className="agent-mode-chip">
+                  GOAL {mode.goal.rounds}/{mode.goal.max_rounds}
+                </span>
+              )}
+              {mode?.plan_active && <span className="agent-mode-chip plan">PLAN</span>}
               {selected && (
                 <div className="task-tabs" role="tablist">
                   <button
@@ -845,13 +964,17 @@ export function Workbench() {
               <p>从一个想法，到一份成果。我们一起完成。</p>
               <div className="mode-switch">
                 <button
-                  onClick={() =>
-                    setInfo('每个工作任务保留完整对话；在任务中继续发送消息即可续聊。')
-                  }
+                  className={launchMode === 'chat' ? 'chosen' : ''}
+                  aria-pressed={launchMode === 'chat'}
+                  onClick={() => setLaunchMode('chat')}
                 >
                   对话
                 </button>
-                <button className="chosen" aria-pressed="true">
+                <button
+                  className={launchMode === 'work' ? 'chosen' : ''}
+                  aria-pressed={launchMode === 'work'}
+                  onClick={() => setLaunchMode('work')}
+                >
                   <Sparkles size={14} />
                   工作
                 </button>
@@ -1237,7 +1360,7 @@ export function Workbench() {
                 <button onClick={() => void refresh()}>重新连接</button>
               </div>
             )}
-            <form className="composer" onSubmit={(event) => void submit(event, editorText())}>
+            <form className="composer" onSubmit={handleComposerSubmit}>
               <label className="sr-only" htmlFor="task-prompt">
                 工作任务内容
               </label>
@@ -1888,6 +2011,19 @@ export function Workbench() {
         </div>
       )}
       {officePanel && <OfficePanel section={officePanel} onClose={() => setOfficePanel(null)} />}
+      {workspacePrompt && (
+        <div className="modal-backdrop" onClick={() => setWorkspacePrompt(null)}>
+          <div className="info-modal" onClick={(event) => event.stopPropagation()}>
+            <h2>选择工作区</h2>
+            <p>工作模式需要项目文件夹，或者使用默认会话目录。</p>
+            <div className="workspace-actions">
+              <button onClick={() => void confirmWorkspaceChoice(false)}>选择项目文件夹</button>
+              <button onClick={() => void confirmWorkspaceChoice(true)}>使用默认目录</button>
+              <button onClick={() => setWorkspacePrompt(null)}>取消</button>
+            </div>
+          </div>
+        </div>
+      )}
       {info && <InfoDialog message={info} onClose={() => setInfo(null)} />}
     </div>
   );

@@ -261,3 +261,48 @@ fn migration_preserves_legacy_results_and_does_not_restart_unfinished_calls() {
     drop(store);
     std::fs::remove_file(path).unwrap();
 }
+
+#[test]
+fn artifact_is_also_written_to_the_session_workspace() {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+
+    let path = std::env::temp_dir().join(format!("invocations-{}.sqlite", uuid::Uuid::new_v4()));
+    let workspace = std::env::temp_dir().join(format!("invocations-ws-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&workspace).unwrap();
+    let store = TaskStore::open(&path).unwrap();
+    let task_id = running_task(&store);
+    let task = store.get(&task_id).unwrap();
+    store
+        .set_session_workspace(
+            &task.conversation_id,
+            workspace.to_str().unwrap(),
+            "test",
+            "session",
+        )
+        .unwrap();
+    let call = ToolCall {
+        id: "artifact-1".into(),
+        name: "create_docx".into(),
+        arguments: serde_json::json!({}),
+    };
+    store.begin_tool(&task_id, &call, None, None, 0).unwrap();
+    store
+        .complete_tool(
+            &task_id,
+            &call,
+            yukii_agent_ports::repository::ToolCompletion::Artifact {
+                title: "报告".into(),
+                filename: "report.txt".into(),
+                media_type: "text/plain".into(),
+                base64: STANDARD.encode("hello"),
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(workspace.join("report.txt")).unwrap(),
+        "hello"
+    );
+    drop(store);
+    let _ = std::fs::remove_file(path);
+    let _ = std::fs::remove_dir_all(workspace);
+}

@@ -1365,6 +1365,122 @@ impl TaskStore {
         Ok(())
     }
 
+    pub fn session_mode(&self, session_id: &str) -> Result<Option<serde_json::Value>, StoreError> {
+        let connection = self.connection.lock().map_err(|_| StoreError::Lock)?;
+        Ok(connection
+            .query_row(
+                "SELECT goal_objective,goal_phase,goal_rounds,goal_max_rounds,plan_active,updated_at FROM session_modes WHERE session_id=?1",
+                [session_id],
+                |row| {
+                    Ok(serde_json::json!({
+                        "session_id": session_id,
+                        "goal": row.get::<_, Option<String>>(0)?.map(|objective| serde_json::json!({
+                            "objective": objective,
+                            "phase": row.get::<_, String>(1).unwrap_or_else(|_| "active".into()),
+                            "rounds": row.get::<_, i64>(2).unwrap_or(0),
+                            "max_rounds": row.get::<_, i64>(3).unwrap_or(6),
+                        })),
+                        "plan_active": row.get::<_, i64>(4).unwrap_or(0) != 0,
+                        "updated_at": row.get::<_, i64>(5).unwrap_or(0),
+                    }))
+                },
+            )
+            .optional()?)
+    }
+
+    pub fn set_goal(
+        &self,
+        session_id: &str,
+        objective: &str,
+        max_rounds: i64,
+    ) -> Result<serde_json::Value, StoreError> {
+        let connection = self.connection.lock().map_err(|_| StoreError::Lock)?;
+        connection.execute(
+            "INSERT INTO session_modes(session_id,goal_objective,goal_phase,goal_rounds,goal_max_rounds,plan_active,updated_at)
+             VALUES(?1,?2,'active',0,?3,0,?4)
+             ON CONFLICT(session_id) DO UPDATE SET goal_objective=excluded.goal_objective,goal_phase='active',goal_rounds=0,goal_max_rounds=excluded.goal_max_rounds,updated_at=excluded.updated_at",
+            params![session_id, objective, max_rounds, now()],
+        )?;
+        drop(connection);
+        self.session_mode(session_id)?.ok_or(StoreError::NotFound)
+    }
+
+    pub fn set_goal_phase(
+        &self,
+        session_id: &str,
+        phase: &str,
+    ) -> Result<serde_json::Value, StoreError> {
+        let connection = self.connection.lock().map_err(|_| StoreError::Lock)?;
+        let changed = connection.execute(
+            "UPDATE session_modes SET goal_phase=?2,updated_at=?3 WHERE session_id=?1 AND goal_objective IS NOT NULL",
+            params![session_id, phase, now()],
+        )?;
+        drop(connection);
+        if changed == 0 {
+            return Err(StoreError::NotFound);
+        }
+        self.session_mode(session_id)?.ok_or(StoreError::NotFound)
+    }
+
+    pub fn clear_goal(&self, session_id: &str) -> Result<serde_json::Value, StoreError> {
+        let connection = self.connection.lock().map_err(|_| StoreError::Lock)?;
+        connection.execute(
+            "UPDATE session_modes SET goal_objective=NULL,goal_phase='complete',goal_rounds=0,updated_at=?2 WHERE session_id=?1",
+            params![session_id, now()],
+        )?;
+        drop(connection);
+        Ok(self
+            .session_mode(session_id)?
+            .unwrap_or_else(|| serde_json::json!({"session_id": session_id, "goal": null, "plan_active": false, "updated_at": now()})))
+    }
+
+    pub fn set_plan_active(
+        &self,
+        session_id: &str,
+        active: bool,
+    ) -> Result<serde_json::Value, StoreError> {
+        let connection = self.connection.lock().map_err(|_| StoreError::Lock)?;
+        connection.execute(
+            "INSERT INTO session_modes(session_id,goal_objective,goal_phase,goal_rounds,goal_max_rounds,plan_active,updated_at)
+             VALUES(?1,NULL,'active',0,6,?2,?3)
+             ON CONFLICT(session_id) DO UPDATE SET plan_active=excluded.plan_active,updated_at=excluded.updated_at",
+            params![session_id, i64::from(active), now()],
+        )?;
+        drop(connection);
+        self.session_mode(session_id)?.ok_or(StoreError::NotFound)
+    }
+
+    pub fn increment_goal_round(&self, session_id: &str) -> Result<serde_json::Value, StoreError> {
+        let connection = self.connection.lock().map_err(|_| StoreError::Lock)?;
+        let changed = connection.execute(
+            "UPDATE session_modes SET goal_rounds=goal_rounds+1,updated_at=?2 WHERE session_id=?1 AND goal_objective IS NOT NULL AND goal_phase='active'",
+            params![session_id, now()],
+        )?;
+        drop(connection);
+        if changed == 0 {
+            return Err(StoreError::NotFound);
+        }
+        self.session_mode(session_id)?.ok_or(StoreError::NotFound)
+    }
+
+    pub fn active_goals(&self) -> Result<Vec<serde_json::Value>, StoreError> {
+        let connection = self.connection.lock().map_err(|_| StoreError::Lock)?;
+        let mut statement = connection.prepare(
+            "SELECT session_id,goal_objective,goal_rounds,goal_max_rounds FROM session_modes
+             WHERE goal_objective IS NOT NULL AND goal_phase='active' AND goal_rounds < goal_max_rounds
+             ORDER BY updated_at DESC",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(serde_json::json!({
+                "session_id": row.get::<_, String>(0)?,
+                "objective": row.get::<_, String>(1)?,
+                "rounds": row.get::<_, i64>(2)?,
+                "max_rounds": row.get::<_, i64>(3)?,
+            }))
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
     pub fn create_schedule(
         &self,
         conversation_id: Option<&str>,

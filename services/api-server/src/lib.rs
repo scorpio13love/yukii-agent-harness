@@ -3,6 +3,7 @@ pub mod cua_approvals;
 pub mod dev_tools;
 pub mod executor;
 pub mod gateway;
+pub mod mode_tools;
 pub mod office;
 pub mod schedule_tools;
 pub mod session_tools;
@@ -102,6 +103,9 @@ pub fn configured_router(state: AppState) -> Router {
                 .put(set_session_workspace)
                 .delete(clear_session_workspace),
         )
+        .route("/api/sessions/{id}/mode", get(get_session_mode))
+        .route("/api/sessions/{id}/goal", post(set_session_goal))
+        .route("/api/sessions/{id}/plan", post(set_session_plan))
         .route(
             "/api/sessions/{id}/trajectory",
             get(conversation_trajectory),
@@ -242,11 +246,58 @@ async fn database<T: Send + 'static>(
         .map_err(HttpError)
 }
 
+/// 网页创建任务的扩展输入：workspace_path 表示用户显式选择的项目目录。
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CreateTaskRequest {
+    #[serde(rename = "session_id")]
+    conversation_id: Option<String>,
+    prompt: String,
+    target: ExecutionTarget,
+    #[serde(default)]
+    workspace_path: Option<String>,
+    #[serde(default)]
+    mode: Option<String>,
+    #[serde(default)]
+    goal_objective: Option<String>,
+    #[serde(default)]
+    goal_max_rounds: Option<i64>,
+}
+
 async fn create_task(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(mut input): Json<CreateTask>,
+    Json(request): Json<CreateTaskRequest>,
 ) -> Result<(StatusCode, Json<Task>), HttpError> {
+    let mode = request.mode.clone();
+    let goal_objective = request.goal_objective.clone();
+    let goal_max_rounds = request.goal_max_rounds;
+    let initial_prompt = request.prompt.clone();
+    if let Some(mode) = mode.as_deref()
+        && !matches!(mode, "goal" | "plan")
+    {
+        return Err(HttpError(RepositoryError::InvalidRequest(
+            "mode 仅支持 goal 或 plan",
+        )));
+    }
+    let mut input = CreateTask {
+        conversation_id: request.conversation_id,
+        prompt: request.prompt,
+        target: request.target,
+    };
+    let project_workspace = match request.workspace_path {
+        Some(path) if !path.trim().is_empty() => {
+            let canonical = std::fs::canonicalize(path.trim())
+                .map_err(|_| HttpError(RepositoryError::InvalidRequest("项目工作区路径不存在")))?;
+            if !canonical.is_dir() {
+                return Err(HttpError(RepositoryError::InvalidRequest(
+                    "项目工作区必须是目录",
+                )));
+            }
+            Some(canonical.to_string_lossy().to_string())
+        }
+        _ => None,
+    };
     let attachment_ids: Vec<String> = headers
         .get("x-attachment-ids")
         .and_then(|value| value.to_str().ok())
@@ -341,18 +392,49 @@ async fn create_task(
             "需要 1–128 位字母、数字或 -_.: 组成的 Idempotency-Key",
         )))?
         .to_owned();
-    let enqueue = state.executor.available();
     let store = state.store.clone();
-    let created = database(move || store.create_once(input, &key, enqueue)).await?;
-    if matches!(created.task.target, ExecutionTarget::CloudOffice) {
+    let created = database(move || store.create_once(input, &key, false)).await?;
+    if let Some(mode) = mode.as_deref() {
         let store = state.store.clone();
-        let root = state.workspace_root.clone();
         let session_id = created.task.conversation_id.clone();
-        let title = created.task.conversation_title.clone();
-        database(move || {
-            workspaces::ensure_default_workspace(store.as_ref(), &root, &session_id, &title, false)
+        let objective = goal_objective
+            .clone()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| initial_prompt.clone());
+        let max_rounds = goal_max_rounds.unwrap_or(6).clamp(1, 20);
+        let mode = mode.to_owned();
+        database(move || match mode.as_str() {
+            "goal" => store.set_goal(&session_id, objective.trim(), max_rounds),
+            "plan" => store.set_plan_active(&session_id, true),
+            _ => Err(RepositoryError::InvalidRequest("mode 无效")),
         })
         .await?;
+    }
+    if matches!(created.task.target, ExecutionTarget::CloudOffice) {
+        let store = state.store.clone();
+        let session_id = created.task.conversation_id.clone();
+        if let Some(path) = project_workspace.as_ref() {
+            let name = std::path::Path::new(path)
+                .file_name()
+                .map(|value| value.to_string_lossy().to_string())
+                .unwrap_or_else(|| "项目".into());
+            let path = path.clone();
+            database(move || store.set_session_workspace(&session_id, &path, &name, "project"))
+                .await?;
+        } else {
+            let root = state.workspace_root.clone();
+            let title = created.task.conversation_title.clone();
+            database(move || {
+                workspaces::ensure_default_workspace(
+                    store.as_ref(),
+                    &root,
+                    &session_id,
+                    &title,
+                    false,
+                )
+            })
+            .await?;
+        }
     }
     if !attachment_records.is_empty() {
         let conversation_id = created.task.conversation_id.clone();
@@ -392,6 +474,13 @@ async fn create_task(
         let task_id = created.task.id.clone();
         let store = state.store.clone();
         database(move || store.record_task_attachments(&task_id, &attachment_records)).await?;
+    }
+    if !created.replayed && state.executor.available() {
+        state
+            .executor
+            .start(created.task.id.clone())
+            .await
+            .map_err(HttpError)?;
     }
     state.executor.notify();
     Ok((
@@ -791,6 +880,65 @@ async fn clear_session_workspace(
     Ok(Json(
         serde_json::json!({"cleared": true, "workspace": workspace}),
     ))
+}
+
+async fn get_session_mode(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    let mode = database(move || state.store.session_mode(&id)).await?;
+    Ok(Json(serde_json::json!({"mode": mode})))
+}
+
+#[derive(Deserialize)]
+struct GoalInput {
+    #[serde(default)]
+    objective: Option<String>,
+    #[serde(default)]
+    action: Option<String>,
+    #[serde(default)]
+    max_goal_rounds: Option<i64>,
+}
+
+async fn set_session_goal(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(input): Json<GoalInput>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    let store = state.store.clone();
+    let mode = database(move || match input.action.as_deref() {
+        Some("clear") => store.clear_goal(&id),
+        Some("pause") => store.set_goal_phase(&id, "paused"),
+        Some("resume") => store.set_goal_phase(&id, "active"),
+        Some("complete") => store.set_goal_phase(&id, "complete"),
+        Some("edit") | None => {
+            let objective = input
+                .objective
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or(RepositoryError::InvalidRequest("goal objective 不能为空"))?;
+            let rounds = input.max_goal_rounds.unwrap_or(6).clamp(1, 20);
+            store.set_goal(&id, objective, rounds)
+        }
+        Some(_) => Err(RepositoryError::InvalidRequest("goal action 无效")),
+    })
+    .await?;
+    Ok(Json(serde_json::json!({"mode": mode})))
+}
+
+#[derive(Deserialize)]
+struct PlanModeInput {
+    active: bool,
+}
+
+async fn set_session_plan(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(input): Json<PlanModeInput>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    let mode = database(move || state.store.set_plan_active(&id, input.active)).await?;
+    Ok(Json(serde_json::json!({"mode": mode})))
 }
 
 async fn compact_conversation(

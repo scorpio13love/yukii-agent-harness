@@ -7,6 +7,7 @@ import {
   type Memory,
   type Schedule,
   type SessionWorkspace,
+  type SessionMode,
   type SubagentRun,
   type ToolInfo,
   type Task,
@@ -32,6 +33,7 @@ export function useTaskWorkspace() {
   const [subagents, setSubagents] = useState<SubagentRun[]>([]);
   const [workspace, setWorkspace] = useState<SessionWorkspace | null>(null);
   const [workspaces, setWorkspaces] = useState<Record<string, SessionWorkspace>>({});
+  const [mode, setMode] = useState<SessionMode | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
   const [selectedId, selectId] = useState<string | null>(null);
@@ -64,6 +66,9 @@ export function useTaskWorkspace() {
     prompt: string;
     key: string;
     conversationId: string | null;
+    workspacePath?: string;
+    mode?: 'goal' | 'plan';
+    goalObjective?: string;
   } | null>(null);
   const selected = tasks.find((task) => task.session_id === selectedId);
 
@@ -119,6 +124,7 @@ export function useTaskWorkspace() {
     setTrajectoryHasOlder(false);
     setArtifacts([]);
     setTaskAttachments({});
+    setMode(null);
     // 附件只属于当前 composer 草稿；不要把历史会话的附件重新塞进输入框。
     setAttachments([]);
   }, [selectedId]);
@@ -142,6 +148,7 @@ export function useTaskWorkspace() {
           nextTrajectory,
           nextSubagents,
           nextWorkspace,
+          nextMode,
         ] = await Promise.all([
           Promise.all(history.map((turn) => api.events(turn.id))),
           Promise.all(history.map((turn) => api.artifacts(turn.id))),
@@ -150,6 +157,7 @@ export function useTaskWorkspace() {
           api.trajectory(id, undefined, 10),
           api.subagents(task.id),
           api.sessionWorkspace(id),
+          api.sessionMode(id),
         ]);
         const nextArtifacts = artifactGroups.flat();
         if (!active) return;
@@ -169,6 +177,7 @@ export function useTaskWorkspace() {
         setTrajectory(nextTrajectory.records);
         setSubagents(nextSubagents.subagents);
         setWorkspace(nextWorkspace.workspace);
+        setMode(nextMode.mode);
         if (nextWorkspace.workspace) {
           const current = nextWorkspace.workspace;
           setWorkspaces((previous) => ({ ...previous, [id]: current }));
@@ -291,6 +300,27 @@ export function useTaskWorkspace() {
     }
   }
 
+  async function setPlanMode(active: boolean, sessionId = selectedId) {
+    if (!sessionId) return;
+    const result = await api.setSessionPlan(sessionId, active);
+    if (sessionId === selectedId) setMode(result.mode);
+  }
+
+  async function setGoalObjective(objective: string, maxRounds = 6, sessionId = selectedId) {
+    if (!sessionId) return;
+    const result = await api.setSessionGoal(sessionId, objective, maxRounds);
+    if (sessionId === selectedId) setMode(result.mode);
+  }
+
+  async function updateGoal(
+    action: 'pause' | 'resume' | 'complete' | 'clear',
+    sessionId = selectedId,
+  ) {
+    if (!sessionId) return;
+    const result = await api.updateSessionGoal(sessionId, action);
+    if (sessionId === selectedId) setMode(result.mode);
+  }
+
   async function cancelSubagent(runId: string) {
     if (!selected) return;
     await api.cancelSubagent(selected.id, runId);
@@ -322,8 +352,14 @@ export function useTaskWorkspace() {
     setTrajectoryHasOlder((older.records[0]?.turn ?? 1) > 1);
   }
 
-  async function submit(event: FormEvent, draft?: string) {
-    event.preventDefault();
+  async function submit(
+    event: FormEvent | undefined,
+    draft?: string,
+    workspacePath?: string,
+    nextMode?: 'goal' | 'plan',
+    goalObjective?: string,
+  ) {
+    event?.preventDefault();
     // 直接使用编辑器快照，避免 IME/快速回车时 React prompt 状态尚未刷新。
     const text = (draft ?? prompt).trim();
     if (!text || busy) return;
@@ -341,12 +377,18 @@ export function useTaskWorkspace() {
     try {
       if (
         pendingSubmission.current?.prompt !== text ||
-        pendingSubmission.current.conversationId !== submittedConversation
+        pendingSubmission.current.conversationId !== submittedConversation ||
+        pendingSubmission.current.workspacePath !== workspacePath ||
+        pendingSubmission.current.mode !== nextMode ||
+        pendingSubmission.current.goalObjective !== goalObjective
       ) {
         pendingSubmission.current = {
           prompt: text,
           key: crypto.randomUUID(),
           conversationId: submittedConversation,
+          workspacePath,
+          mode: nextMode,
+          goalObjective,
         };
       }
       const task = await api.createTask(
@@ -355,6 +397,9 @@ export function useTaskWorkspace() {
         submittedConversation,
         undefined,
         attachments.map((item) => item.file_id),
+        workspacePath,
+        nextMode,
+        goalObjective,
       );
       pendingSubmission.current = null;
       setTasks((previous) => [
@@ -365,6 +410,12 @@ export function useTaskWorkspace() {
         setSelectedId(task.session_id);
         setPrompt('');
       }
+      void api
+        .sessionMode(task.session_id)
+        .then((result) => {
+          if (selection.current === task.session_id) setMode(result.mode);
+        })
+        .catch(() => undefined);
       setRevision((v) => v + 1);
     } catch (cause) {
       setError(message(cause));
@@ -424,9 +475,13 @@ export function useTaskWorkspace() {
     cancelSubagent,
     workspace,
     workspaces,
+    mode,
     deleteSession,
     forkSession,
     setWorkspace: updateWorkspace,
+    setPlanMode,
+    setGoalObjective,
+    updateGoal,
     reloadSession,
     deleteMemory,
     schedules,

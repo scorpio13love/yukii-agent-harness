@@ -113,6 +113,14 @@ YUKII_MODEL=
 
 可用 `YUKII_WORKSPACE_ROOT` 改变默认工作区根目录。
 
+Office 产物会同时复制到当前会话工作区根目录，并在“对话产物”中保留下载入口。
+
+### Agent 模式
+
+- `/goal <目标>`：建立长期目标；同一 Session 在每轮完成后自动进入下一轮，最多 6 轮。模型验证完成后调用 `update_goal action=complete`，暂停/恢复/清除分别使用 `/goal pause`、`/goal resume`、`/goal clear`。
+- `/plan`：进入计划模式，先探索和设计方案，不执行有副作用的修改；模型整理完整计划后调用 `exit_plan_mode`，`/plan off` 可直接退出。
+- 模型也可以在对话中自行调用 `create_goal`、`enter_plan_mode` 和 `exit_plan_mode`，无需用户输入斜杠命令。
+
 ---
 
 ## 6. macOS 权限

@@ -15,7 +15,7 @@ use yukii_agent_ports::tools::ToolCatalog;
 use yukii_agent_rag::RagService;
 use yukii_agent_runtime::Components;
 use yukii_api_server::{AppState, configured_router, executor::Executor, store::TaskStore};
-use yukii_contracts::CreateTask;
+use yukii_contracts::{CreateTask, TaskStatus};
 use yukii_mcp_client::{McpConfig, McpToolCatalog};
 use yukii_model_gateway::{HttpModel, LanguageModel, config::Settings};
 use yukii_office_tools::OfficeTools;
@@ -151,6 +151,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         store.clone(),
         workspace_root.clone(),
     ));
+    let mode_tools = Arc::new(yukii_api_server::mode_tools::ModeTools::new(store.clone()));
     let session_tools = Arc::new(yukii_api_server::session_tools::SessionTools::new(
         store.clone(),
     ));
@@ -158,6 +159,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         schedule_tools,
         session_tools,
         dev_tools,
+        mode_tools,
         Arc::new(yukii_api_server::browser_tools::BrowserTools::new()),
         extensions.clone() as Arc<dyn ToolCatalog>,
         Arc::new(OfficeTools::from_env()),
@@ -207,6 +209,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let index_stop = tokio_util::sync::CancellationToken::new();
     let indexer = tokio::spawn(rag.serve_indexer(index_stop.clone()));
     let worker = tokio::spawn(executor.clone().serve());
+    // Goal 模式：同一 Session 在上一轮完成后自动排入下一轮，直到模型完成/暂停/达到轮数上限。
+    let goal_store = store.clone();
+    let goal_executor = executor.clone();
+    let goal_stop = index_stop.clone();
+    let goal_driver = tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                _ = goal_stop.cancelled() => break,
+                _ = tokio::time::sleep(Duration::from_secs(3)) => {}
+            }
+            drive_goals(goal_store.clone(), goal_executor.clone()).await;
+        }
+    });
     // 一次性计划任务：领取到期行，创建普通持久任务，由既有 worker 执行。
     let schedule_store = store.clone();
     let schedule_stop = index_stop.clone();
@@ -312,10 +327,80 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .await?;
     worker.await?;
+    goal_driver.await?;
     scheduler.await?;
     indexer.await?;
     sandbox.shutdown().await;
     Ok(())
+}
+
+/// 一个 Session 的 goal 续行：只在上一轮完成、目标仍 active 且未达上限时排入下一轮。
+async fn drive_goals(store: Arc<TaskStore>, executor: Arc<Executor>) {
+    if !executor.available() {
+        return;
+    }
+    let Ok(goals) = store.active_goals() else {
+        return;
+    };
+    for goal in goals {
+        let Some(session_id) = goal["session_id"].as_str() else {
+            continue;
+        };
+        let Ok(tasks) = store.conversation(session_id) else {
+            continue;
+        };
+        let Some(latest) = tasks.last() else {
+            continue;
+        };
+        match latest.status {
+            TaskStatus::Completed => {
+                let Ok(Some(mode)) = store.session_mode(session_id) else {
+                    continue;
+                };
+                let Some(current) = mode.get("goal").filter(|goal| !goal.is_null()) else {
+                    continue;
+                };
+                if current["phase"].as_str() != Some("active") {
+                    continue;
+                }
+                let Ok(updated) = store.increment_goal_round(session_id) else {
+                    continue;
+                };
+                let round = updated["goal"]["rounds"].as_i64().unwrap_or(1);
+                let max_rounds = updated["goal"]["max_rounds"].as_i64().unwrap_or(6);
+                let objective = updated["goal"]["objective"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned();
+                let prompt = format!(
+                    "<goal_round>\nObjective: {objective}\nRound: {round}/{max_rounds}\n\n继续在同一会话推进目标。把当前工作区、工具结果和持久会话状态当作事实来源；先检查现状再行动，完成后用工具验证。完成整个目标前不要声称完成；仍有工作就保持目标 active。"
+                );
+                let key = format!("goal:{session_id}:{round}");
+                match store.create_once(
+                    CreateTask {
+                        conversation_id: Some(session_id.to_owned()),
+                        prompt,
+                        target: yukii_contracts::ExecutionTarget::CloudOffice,
+                    },
+                    &key,
+                    true,
+                ) {
+                    Ok(created) => {
+                        tracing::info!(session_id, round, task_id=%created.task.id, "Goal Round 已入队");
+                        executor.notify();
+                    }
+                    Err(error) => {
+                        tracing::warn!(session_id, round, %error, "Goal Round 入队失败");
+                        let _ = store.set_goal_phase(session_id, "paused");
+                    }
+                }
+            }
+            TaskStatus::Failed | TaskStatus::Cancelled => {
+                let _ = store.set_goal_phase(session_id, "paused");
+            }
+            _ => {}
+        }
+    }
 }
 
 /// SIGTERM 与 Ctrl+C 都先停止领取任务，再等待已领取任务保存取消终态。

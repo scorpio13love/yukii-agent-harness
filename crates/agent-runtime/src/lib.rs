@@ -433,10 +433,19 @@ impl Executor {
             tools.retain(|tool| tool_allowlist.contains(&tool.definition().name));
         }
         let gateway = ToolGateway::from_tools(tools).map_err(|_| AgentError::Host)?;
-        let system = self.system_prompt.unwrap_or(match task.target {
+        let mode = self
+            .io({
+                let session_id = task.conversation_id.clone();
+                move |store| store.session_mode(&session_id)
+            })
+            .await
+            .map_err(|_| AgentError::Host)?;
+        let base_system = self.system_prompt.unwrap_or(match task.target {
             yukii_contracts::ExecutionTarget::LocalComputer => runner::DESKTOP_SYSTEM,
             yukii_contracts::ExecutionTarget::CloudOffice => runner::SYSTEM,
         });
+        let mut system = base_system.to_owned();
+        append_mode_prompt(&mut system, mode.as_ref());
         let host = TaskHost {
             store: self.store.clone(),
             id: task.id.clone(),
@@ -444,7 +453,7 @@ impl Executor {
             target: task.target,
             model: model.clone(),
             limits: self.limits.clone(),
-            system,
+            system: system.clone(),
             cancel: cancel.clone(),
             allow_subagent: true,
             parent_call_id: None,
@@ -456,7 +465,7 @@ impl Executor {
         let answer = match runner::run_with_system(
             model.as_ref(),
             &host,
-            system,
+            &system,
             &prompt,
             &history,
             &self.limits,
@@ -487,7 +496,7 @@ impl Executor {
                 runner::run_with_system(
                     model.as_ref(),
                     &host,
-                    system,
+                    &system,
                     &prompt,
                     &retry_history,
                     &self.limits,
@@ -532,5 +541,27 @@ impl Executor {
         tokio::task::spawn_blocking(move || operation(store.as_ref()))
             .await
             .map_err(|_| RepositoryError::Backend)?
+    }
+}
+
+fn append_mode_prompt(system: &mut String, mode: Option<&serde_json::Value>) {
+    let Some(mode) = mode else {
+        return;
+    };
+    if let Some(goal) = mode.get("goal").filter(|goal| !goal.is_null())
+        && goal["phase"].as_str() == Some("active")
+    {
+        let objective = goal["objective"].as_str().unwrap_or_default();
+        let rounds = goal["rounds"].as_i64().unwrap_or(0);
+        let max_rounds = goal["max_rounds"].as_i64().unwrap_or(6);
+        system.push_str("\n\n--- Goal mode ---\n当前会话有一个持续目标：\n");
+        system.push_str(objective);
+        system.push_str(&format!(
+            "\n\n这是第 {}/{max_rounds} 轮。持续推进直到目标完成；完成前先用工具验证结果。完成时调用 update_goal 且 action=complete；同一阻塞条件持续至少 3 轮才可 action=blocked 并给出具体原因。不要只在正文里声称完成。",
+            rounds + 1
+        ));
+    }
+    if mode["plan_active"].as_bool() == Some(true) {
+        system.push_str("\n\n--- Plan mode ---\n你正在计划模式。先探索、阅读和设计，不要执行有副作用的修改。完成方案后调用 exit_plan_mode 提交以 # 标题开头的完整 Markdown 计划；用户可用 /plan off 退出。");
     }
 }

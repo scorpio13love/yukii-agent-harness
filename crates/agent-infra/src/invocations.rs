@@ -3,6 +3,7 @@ use crate::{
     StoreError, TaskStore,
     sqlite::{append_event, ensure_active, now, now_millis, read_task},
 };
+use base64::{Engine, engine::general_purpose::STANDARD};
 use rusqlite::{OptionalExtension, TransactionBehavior, params};
 use yukii_agent_domain::TaskError;
 use yukii_agent_ports::{
@@ -136,7 +137,7 @@ impl TaskStore {
         if state != "running" || previous_result.is_some() {
             return Err(TaskError::InvalidTransition.into());
         }
-        let (result, message) = match completion {
+        let (result, message, workspace_copy) = match completion {
             ToolCompletion::Result(result) => {
                 if result.call_id != call.id {
                     return Err(StoreError::IdempotencyConflict);
@@ -146,9 +147,10 @@ impl TaskStore {
                 } else {
                     "工具执行完成，回执已保存。"
                 };
-                (result, message.to_owned())
+                (result, message.to_owned(), None)
             }
             ToolCompletion::Document { title, content } => {
+                let workspace_copy = ("document.md".to_owned(), content.as_bytes().to_vec());
                 let artifact = Artifact {
                     id: uuid::Uuid::new_v4().to_string(),
                     task_id: id.into(),
@@ -176,6 +178,7 @@ impl TaskStore {
                 (
                     result,
                     format!("已保存 Markdown 文档及工具回执：{}", artifact.title),
+                    Some(workspace_copy),
                 )
             }
             ToolCompletion::Artifact {
@@ -184,6 +187,10 @@ impl TaskStore {
                 media_type,
                 base64,
             } => {
+                let workspace_copy = STANDARD
+                    .decode(base64.as_bytes())
+                    .ok()
+                    .map(|bytes| (filename.clone(), bytes));
                 let artifact = Artifact {
                     id: uuid::Uuid::new_v4().to_string(),
                     task_id: id.into(),
@@ -213,6 +220,7 @@ impl TaskStore {
                 (
                     result,
                     format!("已保存二进制产物及工具回执：{}", artifact.title),
+                    workspace_copy,
                 )
             }
             ToolCompletion::Plan { steps } => (
@@ -231,6 +239,7 @@ impl TaskStore {
                         .collect::<Vec<_>>()
                         .join("\n")
                 ),
+                None,
             ),
         };
         for (ordinal, image) in result.images.iter().enumerate() {
@@ -289,6 +298,34 @@ impl TaskStore {
         transaction.commit()?;
         drop(connection);
         self.drain_session_outbox()?;
+        if let Some((filename, bytes)) = workspace_copy {
+            self.save_artifact_to_workspace(&task, &filename, &bytes);
+        }
         Ok(result)
+    }
+
+    /// 产物仍以 artifact 为事实源；同时尽力复制到会话工作区，方便用户直接取用。
+    fn save_artifact_to_workspace(
+        &self,
+        task: &yukii_contracts::Task,
+        filename: &str,
+        bytes: &[u8],
+    ) {
+        let Ok(Some(workspace)) = self.session_workspace(&task.conversation_id) else {
+            return;
+        };
+        let Some(path) = workspace["path"].as_str() else {
+            return;
+        };
+        let root = std::path::Path::new(path);
+        if !root.is_dir() {
+            return;
+        }
+        let name = std::path::Path::new(filename)
+            .file_name()
+            .and_then(|value| value.to_str())
+            .filter(|value| !value.is_empty())
+            .unwrap_or("artifact.bin");
+        let _ = std::fs::write(root.join(name), bytes);
     }
 }

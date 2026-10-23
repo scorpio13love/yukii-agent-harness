@@ -147,6 +147,26 @@ pub trait TaskRepository: Send + Sync {
         kind: &str,
     ) -> Result<serde_json::Value, RepositoryError>;
     fn clear_session_workspace(&self, session_id: &str) -> Result<(), RepositoryError>;
+    fn session_mode(&self, session_id: &str) -> Result<Option<serde_json::Value>, RepositoryError>;
+    fn set_goal(
+        &self,
+        session_id: &str,
+        objective: &str,
+        max_rounds: i64,
+    ) -> Result<serde_json::Value, RepositoryError>;
+    fn set_goal_phase(
+        &self,
+        session_id: &str,
+        phase: &str,
+    ) -> Result<serde_json::Value, RepositoryError>;
+    fn clear_goal(&self, session_id: &str) -> Result<serde_json::Value, RepositoryError>;
+    fn set_plan_active(
+        &self,
+        session_id: &str,
+        active: bool,
+    ) -> Result<serde_json::Value, RepositoryError>;
+    fn increment_goal_round(&self, session_id: &str) -> Result<serde_json::Value, RepositoryError>;
+    fn active_goals(&self) -> Result<Vec<serde_json::Value>, RepositoryError>;
     #[allow(clippy::too_many_arguments)]
     fn add_compaction(
         &self,
