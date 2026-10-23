@@ -1043,7 +1043,6 @@ export function Workbench() {
     return [...groups.values()];
   })();
   function renderSession(task: Task): ReactElement {
-    const isProject = workspaces[task.session_id]?.kind === 'project';
     return (
       <div
         className={`history-item-wrap ${
@@ -1061,7 +1060,7 @@ export function Workbench() {
             setSelectedId(task.session_id);
           }}
         >
-          {isProject ? <Folder size={15} /> : <FileText size={15} />}
+          <FileText size={15} />
           <Marquee text={splitMessage(task.session_title).text} />
         </button>
         <div className="history-actions">
@@ -2897,6 +2896,7 @@ export function Workbench() {
         (() => {
           const task = tasks.find((item) => item.session_id === rowMenu.id);
           if (!task) return null;
+          const isProject = workspaces[task.session_id]?.kind === 'project';
           return (
             <div
               className="row-popover"
@@ -2912,22 +2912,26 @@ export function Workbench() {
               >
                 Fork Session
               </button>
-              <button
-                onClick={() => {
-                  setRowMenu(null);
-                  void openWorkspaceFolder(task.session_id);
-                }}
-              >
-                打开工作区
-              </button>
-              <button
-                onClick={() => {
-                  setRowMenu(null);
-                  void pickWorkspace(task.session_id);
-                }}
-              >
-                绑定项目目录
-              </button>
+              {!isProject && (
+                <>
+                  <button
+                    onClick={() => {
+                      setRowMenu(null);
+                      void openWorkspaceFolder(task.session_id);
+                    }}
+                  >
+                    打开工作区
+                  </button>
+                  <button
+                    onClick={() => {
+                      setRowMenu(null);
+                      void pickWorkspace(task.session_id);
+                    }}
+                  >
+                    绑定项目目录
+                  </button>
+                </>
+              )}
               <button
                 className="danger"
                 onClick={async () => {
