@@ -1291,6 +1291,10 @@ impl TaskStore {
             [session_id],
         )?;
         transaction.execute(
+            "DELETE FROM session_modes WHERE session_id=?1",
+            [session_id],
+        )?;
+        transaction.execute(
             "DELETE FROM session_outbox WHERE session_id=?1",
             [session_id],
         )?;

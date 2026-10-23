@@ -215,6 +215,18 @@ function Marquee({ text }: { text: string }) {
   );
 }
 
+function useThinkingSeconds(active: boolean, startedAt?: number) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [active, startedAt]);
+  if (!active || !startedAt) return 0;
+  return Math.max(0, Math.floor(now / 1000 - startedAt));
+}
+
 export function Workbench() {
   const {
     tasks,
@@ -263,6 +275,10 @@ export function Workbench() {
     approvePermission,
     denyPermission,
   } = useTaskWorkspace();
+  const thinkingSeconds = useThinkingSeconds(
+    selected ? isActiveTask(selected) : false,
+    selected?.created_at,
+  );
   const [detailsOpen, setDetailsOpen] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [info, setInfo] = useState<string | null>(null);
@@ -1073,6 +1089,22 @@ export function Workbench() {
                   <div className="chat-row agent">
                     <div className="chat-bubble agent">
                       <pre>{streamText}</pre>
+                      <small className="thinking-timer">生成中 · {thinkingSeconds}s</small>
+                    </div>
+                  </div>
+                )}
+                {selected && isActiveTask(selected) && !streamText && !selected.result && (
+                  <div className="chat-row agent">
+                    <div className="thinking-bubble" role="status" aria-live="polite">
+                      <LoaderCircle className="spin" size={13} />
+                      <span>
+                        {selected.status === 'queued'
+                          ? '等待执行'
+                          : selected.status === 'waiting_for_user'
+                            ? '等待确认'
+                            : 'LLM 思考中'}{' '}
+                        · {thinkingSeconds}s
+                      </span>
                     </div>
                   </div>
                 )}
