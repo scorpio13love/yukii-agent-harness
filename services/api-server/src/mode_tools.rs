@@ -121,7 +121,7 @@ impl Tool for ModeTool {
             ),
             Kind::ExitPlan => (
                 "exit_plan_mode",
-                "在计划模式中提交以 # 标题开头的完整 Markdown 计划并退出计划模式；只有在方案已经清晰后才调用。",
+                "在计划模式中提交以 # 标题开头的完整 Markdown 计划，交给用户评审；用户批准后才会退出计划模式。只有在方案已经清晰后才调用。",
                 json!({
                     "type":"object",
                     "properties":{"plan":{"type":"string","maxLength":20000}},
@@ -251,11 +251,13 @@ impl Tool for ModeTool {
                     return Err("计划必须是以 # 标题开头的 Markdown".into());
                 }
                 self.store
-                    .set_plan_active(&session, false)
-                    .map_err(|_| "退出计划模式失败")?;
+                    .set_plan_pending(&session, &input.plan)
+                    .map_err(|_| "提交计划评审失败")?;
                 Ok(ToolEffect::Result(json!({
-                    "approved": true,
+                    "approved": false,
+                    "pending_review": true,
                     "plan": input.plan,
+                    "note": "计划已提交给用户评审；不要继续执行，等待用户批准或反馈。"
                 })))
             }
         }

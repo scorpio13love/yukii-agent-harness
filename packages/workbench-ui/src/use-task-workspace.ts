@@ -306,6 +306,19 @@ export function useTaskWorkspace() {
     if (sessionId === selectedId) setMode(result.mode);
   }
 
+  async function decidePlan(approved: boolean, sessionId = selectedId) {
+    if (!sessionId) return;
+    const result = await api.decideSessionPlan(sessionId, approved);
+    if (sessionId === selectedId) setMode(result.mode);
+    if (result.task) {
+      setTasks((previous) => [
+        result.task!,
+        ...previous.filter((item) => item.session_id !== result.task!.session_id),
+      ]);
+      setSelectedId(result.task.session_id);
+    }
+  }
+
   async function setGoalObjective(objective: string, maxRounds = 6, sessionId = selectedId) {
     if (!sessionId) return;
     const result = await api.setSessionGoal(sessionId, objective, maxRounds);
@@ -480,6 +493,7 @@ export function useTaskWorkspace() {
     forkSession,
     setWorkspace: updateWorkspace,
     setPlanMode,
+    decidePlan,
     setGoalObjective,
     updateGoal,
     reloadSession,

@@ -165,6 +165,12 @@ pub trait TaskRepository: Send + Sync {
         session_id: &str,
         active: bool,
     ) -> Result<serde_json::Value, RepositoryError>;
+    fn set_plan_pending(
+        &self,
+        session_id: &str,
+        plan: &str,
+    ) -> Result<serde_json::Value, RepositoryError>;
+    fn clear_plan_pending(&self, session_id: &str) -> Result<serde_json::Value, RepositoryError>;
     fn increment_goal_round(&self, session_id: &str) -> Result<serde_json::Value, RepositoryError>;
     fn active_goals(&self) -> Result<Vec<serde_json::Value>, RepositoryError>;
     #[allow(clippy::too_many_arguments)]

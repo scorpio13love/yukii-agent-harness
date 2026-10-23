@@ -107,6 +107,7 @@ const sessionModeRecordSchema = z.object({
   session_id: z.string(),
   goal: goalSchema.nullable(),
   plan_active: z.boolean(),
+  pending_plan: z.string().nullable(),
   updated_at: z.number(),
 });
 
@@ -370,6 +371,16 @@ export const httpApi = {
       method: 'POST',
       body: JSON.stringify({ active }),
     }),
+  decideSessionPlan: (id: string, approved: boolean) =>
+    request(
+      `/sessions/${encodeURIComponent(id)}/plan/decision`,
+      z.object({
+        approved: z.boolean(),
+        mode: sessionModeSchema,
+        task: taskSchema.optional(),
+      }),
+      { method: 'POST', body: JSON.stringify({ approved }) },
+    ),
   subagents: (taskId: string) =>
     request(
       `/tasks/${encodeURIComponent(taskId)}/subagents`,
@@ -488,6 +499,7 @@ export function localApi(): typeof httpApi | null {
     setSessionGoal: async () => ({ mode: null }),
     updateSessionGoal: async () => ({ mode: null }),
     setSessionPlan: async () => ({ mode: null }),
+    decideSessionPlan: async () => ({ approved: false, mode: null }),
     subagents: async () => ({ subagents: [] }),
     cancelSubagent: async (_taskId: string, runId: string) => ({ cancelled: runId }),
     tools: async () => ({ tools: [] }),

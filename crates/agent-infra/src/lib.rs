@@ -247,6 +247,18 @@ impl TaskRepository for TaskStore {
         TaskStore::set_plan_active(self, session_id, active).map_err(Into::into)
     }
 
+    fn set_plan_pending(
+        &self,
+        session_id: &str,
+        plan: &str,
+    ) -> Result<serde_json::Value, RepositoryError> {
+        TaskStore::set_plan_pending(self, session_id, plan).map_err(Into::into)
+    }
+
+    fn clear_plan_pending(&self, session_id: &str) -> Result<serde_json::Value, RepositoryError> {
+        TaskStore::clear_plan_pending(self, session_id).map_err(Into::into)
+    }
+
     fn increment_goal_round(&self, session_id: &str) -> Result<serde_json::Value, RepositoryError> {
         TaskStore::increment_goal_round(self, session_id).map_err(Into::into)
     }

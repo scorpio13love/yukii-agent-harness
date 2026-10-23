@@ -188,6 +188,7 @@ async fn goal_and_plan_modes_are_persisted_for_a_new_session() {
     assert_eq!(mode["goal"]["phase"], "active");
 
     let response = app
+        .clone()
         .oneshot(
             Request::post(format!("/api/sessions/{}/plan", task.conversation_id))
                 .header("host", "localhost:8765")
@@ -200,6 +201,31 @@ async fn goal_and_plan_modes_are_persisted_for_a_new_session() {
     assert_eq!(response.status(), StatusCode::OK);
     let mode = store.session_mode(&task.conversation_id).unwrap().unwrap();
     assert_eq!(mode["plan_active"], true);
+    store.cancel(&task.id).unwrap();
+
+    store
+        .set_plan_pending(&task.conversation_id, "# 计划\n\n先检查再执行")
+        .unwrap();
+    let response = app
+        .oneshot(
+            Request::post(format!(
+                "/api/sessions/{}/plan/decision",
+                task.conversation_id
+            ))
+            .header("host", "localhost:8765")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::json!({"approved": true}).to_string(),
+            ))
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let mode = store.session_mode(&task.conversation_id).unwrap().unwrap();
+    assert_eq!(mode["plan_active"], false);
+    assert!(mode["pending_plan"].is_null());
+    assert_eq!(store.conversation(&task.conversation_id).unwrap().len(), 2);
 
     let _ = std::fs::remove_dir_all(root);
 }

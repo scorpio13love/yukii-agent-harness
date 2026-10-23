@@ -107,6 +107,10 @@ pub fn configured_router(state: AppState) -> Router {
         .route("/api/sessions/{id}/goal", post(set_session_goal))
         .route("/api/sessions/{id}/plan", post(set_session_plan))
         .route(
+            "/api/sessions/{id}/plan/decision",
+            post(decide_session_plan),
+        )
+        .route(
             "/api/sessions/{id}/trajectory",
             get(conversation_trajectory),
         )
@@ -939,6 +943,85 @@ async fn set_session_plan(
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let mode = database(move || state.store.set_plan_active(&id, input.active)).await?;
     Ok(Json(serde_json::json!({"mode": mode})))
+}
+
+#[derive(Deserialize)]
+struct PlanDecisionInput {
+    approved: bool,
+}
+
+async fn decide_session_plan(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(input): Json<PlanDecisionInput>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    if !input.approved {
+        let store = state.store.clone();
+        let session_id = id.clone();
+        let mode = database(move || store.clear_plan_pending(&session_id)).await?;
+        return Ok(Json(serde_json::json!({"approved": false, "mode": mode})));
+    }
+    let store = state.store.clone();
+    let session_id = id.clone();
+    let pending = database(move || store.session_mode(&session_id)).await?;
+    let _pending_plan = pending
+        .as_ref()
+        .and_then(|mode| mode["pending_plan"].as_str())
+        .filter(|plan| !plan.trim().is_empty())
+        .ok_or(HttpError(RepositoryError::InvalidRequest(
+            "当前没有待评审的计划",
+        )))?;
+    let key = format!(
+        "plan-approved:{id}:{}",
+        pending
+            .as_ref()
+            .and_then(|mode| mode["updated_at"].as_i64())
+            .unwrap_or(0)
+    );
+    let store = state.store.clone();
+    let session_id = id.clone();
+    let mode = database(move || {
+        store.set_plan_active(&session_id, false)?;
+        store
+            .session_mode(&session_id)?
+            .ok_or(RepositoryError::NotFound)
+    })
+    .await?;
+    let store = state.store.clone();
+    let session_id = id.clone();
+    let created = database(move || {
+        store.create_once(
+            CreateTask {
+                conversation_id: Some(session_id),
+                prompt: "用户已批准你提交的计划。请开始执行该计划：先检查当前工作区与相关文件，再逐步完成并验证结果。".into(),
+                target: ExecutionTarget::CloudOffice,
+            },
+            &key,
+            false,
+        )
+    })
+    .await?;
+    let store = state.store.clone();
+    let root = state.workspace_root.clone();
+    let session_id = created.task.conversation_id.clone();
+    let title = created.task.conversation_title.clone();
+    database(move || {
+        workspaces::ensure_default_workspace(store.as_ref(), &root, &session_id, &title, false)
+    })
+    .await?;
+    if !created.replayed && state.executor.available() {
+        state
+            .executor
+            .start(created.task.id.clone())
+            .await
+            .map_err(HttpError)?;
+    }
+    state.executor.notify();
+    Ok(Json(serde_json::json!({
+        "approved": true,
+        "mode": mode,
+        "task": created.task,
+    })))
 }
 
 async fn compact_conversation(

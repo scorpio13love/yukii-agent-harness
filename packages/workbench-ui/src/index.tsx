@@ -236,6 +236,7 @@ export function Workbench() {
     workspaces,
     mode,
     setPlanMode,
+    decidePlan,
     updateGoal,
     reloadSession,
     deleteMemory,
@@ -2020,6 +2021,35 @@ export function Workbench() {
               <button onClick={() => void confirmWorkspaceChoice(false)}>选择项目文件夹</button>
               <button onClick={() => void confirmWorkspaceChoice(true)}>使用默认目录</button>
               <button onClick={() => setWorkspacePrompt(null)}>取消</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {mode?.pending_plan && selectedId && !workspacePrompt && (
+        <div
+          className="modal-backdrop"
+          onClick={() => void decidePlan(false).catch(() => undefined)}
+        >
+          <div
+            className="info-modal plan-review-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2>计划评审</h2>
+            <p>模型提交了执行计划。批准后会在同一会话开始执行。</p>
+            <pre className="plan-preview">{mode.pending_plan}</pre>
+            <div className="workspace-actions">
+              <button
+                onClick={() =>
+                  void decidePlan(true).catch((cause) =>
+                    setInfo(cause instanceof Error ? cause.message : '计划批准失败'),
+                  )
+                }
+              >
+                批准并执行
+              </button>
+              <button onClick={() => void decidePlan(false).catch(() => undefined)}>
+                继续规划
+              </button>
             </div>
           </div>
         </div>
