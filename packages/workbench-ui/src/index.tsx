@@ -67,6 +67,21 @@ type ParsedAttachment = { filename: string; sessionId: string; fileId: string };
 const ATTACHMENT_MARKER = '\n\n当前消息附件（元数据，不是正文）：';
 const STAGING_SESSION_ID = '00000000-0000-4000-8000-000000000000';
 
+const SLASH_COMMANDS = [
+  { command: '/goal', insert: '/goal ', label: '建立长期目标', hint: '/goal <目标>' },
+  {
+    command: '/goal edit',
+    insert: '/goal edit ',
+    label: '编辑当前目标',
+    hint: '/goal edit <新目标>',
+  },
+  { command: '/goal pause', insert: '/goal pause', label: '暂停目标', hint: '/goal pause' },
+  { command: '/goal resume', insert: '/goal resume', label: '恢复目标', hint: '/goal resume' },
+  { command: '/goal clear', insert: '/goal clear', label: '清除目标', hint: '/goal clear' },
+  { command: '/plan', insert: '/plan ', label: '进入计划模式', hint: '/plan [需求]' },
+  { command: '/plan off', insert: '/plan off', label: '退出计划模式', hint: '/plan off' },
+];
+
 /** 从运行时 prompt 中拆出用户正文与附件元数据，避免把元数据块当正文展示。 */
 const TRACE_KIND_LABELS: Record<string, string> = {
   user: '用户',
@@ -284,6 +299,11 @@ export function Workbench() {
     selected ? isActiveTask(selected) : false,
     liveStartedAt,
   );
+  const slashInput = prompt.trimStart().toLowerCase();
+  const slashOpen = slashInput.startsWith('/') && !slashInput.includes('\n');
+  const slashMatches = slashOpen
+    ? SLASH_COMMANDS.filter((item) => item.command.startsWith(slashInput))
+    : [];
   const [detailsOpen, setDetailsOpen] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [info, setInfo] = useState<string | null>(null);
@@ -351,6 +371,10 @@ export function Workbench() {
     event.preventDefault();
     const text = editorText().trim();
     if (!text) return;
+    if (text === '/') {
+      setInfo('输入 /goal 管理长期目标，或 /plan 进入计划模式。');
+      return;
+    }
     if (/^\/goal(?=\s|$)/i.test(text)) {
       void handleGoalCommand(text);
       return;
@@ -375,6 +399,21 @@ export function Workbench() {
   function clearEditor() {
     if (editor.current) editor.current.innerHTML = '';
     setPrompt('');
+  }
+
+  function applySlashCommand(insert: string) {
+    const element = editor.current;
+    if (element) {
+      element.textContent = insert;
+      element.focus();
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      range.collapse(false);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    }
+    setPrompt(insert);
   }
 
   async function handleGoalCommand(text: string) {
@@ -1518,6 +1557,24 @@ export function Workbench() {
                   }
                 }}
               />
+              {slashOpen && slashMatches.length > 0 && (
+                <div className="slash-menu" role="listbox" aria-label="斜杠命令">
+                  <div className="slash-menu-head">斜杠命令</div>
+                  {slashMatches.map((item) => (
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={false}
+                      key={item.command}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => applySlashCommand(item.insert)}
+                    >
+                      <code>{item.hint}</code>
+                      <span>{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               {(uploading || attachments.length > 0) && (
                 <div className="draft-attachments">
                   {uploading && (
@@ -1552,6 +1609,15 @@ export function Workbench() {
               )}
               <div className="composer-toolbar">
                 <div>
+                  <button
+                    type="button"
+                    className="slash-trigger"
+                    aria-label="斜杠命令"
+                    title="斜杠命令"
+                    onClick={() => applySlashCommand('/')}
+                  >
+                    /
+                  </button>
                   <button
                     type="button"
                     className="icon-button"
@@ -1756,7 +1822,7 @@ export function Workbench() {
             </div>
             <p className="composer-footnote">
               {capabilities?.agent_execution
-                ? 'Agent 已配置 · 支持知识库引用、计算、技能与受控工具'
+                ? 'Agent 已配置 · 支持知识库引用、计算、技能与受控工具 · 输入 / 查看命令'
                 : '模型未配置 · 请填写项目 .env 并重启 Rust 服务'}
             </p>
           </div>

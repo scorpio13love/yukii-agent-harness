@@ -486,11 +486,74 @@ button:hover:not(:disabled) {
   border-radius: 18px;
   background: #fff;
   box-shadow: 0 4px 22px #3c66bc09;
-  overflow: hidden;
+  overflow: visible;
 }
 .composer:focus-within {
   border-color: #9fb9f3;
   box-shadow: 0 4px 22px #3c66bc10;
+}
+.slash-menu {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(100% + 8px);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid #dce4f3;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 14px 38px #28436e1f;
+}
+.slash-menu-head {
+  padding: 6px 9px 4px;
+  color: #9aa3b2;
+  font-size: 9px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+.slash-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.slash-menu button:hover {
+  background: #f2f6ff;
+}
+.slash-menu code {
+  color: #3861cc;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+.slash-menu span {
+  flex-shrink: 0;
+  color: #8c96a6;
+  font-size: 10px;
+}
+.slash-trigger {
+  width: 28px;
+  height: 28px;
+  margin-right: 4px;
+  border: 1px solid #e2e8f2;
+  border-radius: 8px;
+  background: #fff;
+  color: #5b6b82;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+  cursor: pointer;
+}
+.slash-trigger:hover {
+  border-color: #9fb9f3;
+  color: #3861cc;
 }
 .composer textarea {
   display: block;
