@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
+    collections::BTreeMap,
     path::{Component, Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -190,6 +191,85 @@ async fn docker_run(root: &Path, command: &str) -> Result<Value, String> {
         "sandbox": "docker",
         "network": "none"
     }))
+}
+
+fn snapshot_workspace(root: &Path) -> BTreeMap<String, String> {
+    fn walk(root: &Path, current: &Path, files: &mut BTreeMap<String, String>) {
+        if files.len() >= 2000 {
+            return;
+        }
+        let Ok(entries) = std::fs::read_dir(current) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Some(name) = path.file_name().map(|value| value.to_string_lossy()) else {
+                continue;
+            };
+            if matches!(
+                name.as_ref(),
+                ".git" | "node_modules" | "target" | "dist" | ".yukii"
+            ) {
+                continue;
+            }
+            let Ok(metadata) = entry.metadata() else {
+                continue;
+            };
+            if metadata.is_dir() {
+                walk(root, &path, files);
+                continue;
+            }
+            if !metadata.is_file() || metadata.len() > 2 * 1024 * 1024 {
+                continue;
+            }
+            let Ok(relative) = path.strip_prefix(root) else {
+                continue;
+            };
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            files.insert(relative.to_string_lossy().to_string(), text);
+        }
+    }
+    let mut files = BTreeMap::new();
+    walk(root, root, &mut files);
+    files
+}
+
+fn record_workspace_changes(
+    store: &Arc<dyn TaskRepository>,
+    task_id: &str,
+    before: &BTreeMap<String, String>,
+    after: &BTreeMap<String, String>,
+) {
+    let Ok(task) = store.get(task_id) else {
+        return;
+    };
+    for (path, text) in after {
+        match before.get(path) {
+            Some(previous) if previous == text => {}
+            Some(previous) => {
+                let _ = store.record_file_change(
+                    task_id,
+                    &task.conversation_id,
+                    path,
+                    previous,
+                    text,
+                    "modify",
+                );
+            }
+            None => {
+                let _ = store.record_file_change(
+                    task_id,
+                    &task.conversation_id,
+                    path,
+                    "",
+                    text,
+                    "create",
+                );
+            }
+        }
+    }
 }
 
 struct DevTool {
@@ -396,7 +476,11 @@ impl Tool for DevTool {
             Kind::Bash => {
                 let input: CommandInput =
                     serde_json::from_value(arguments).map_err(|_| "命令参数无效")?;
-                Ok(ToolEffect::Result(docker_run(&root, &input.command).await?))
+                let before = snapshot_workspace(&root);
+                let result = docker_run(&root, &input.command).await;
+                let after = snapshot_workspace(&root);
+                record_workspace_changes(&self.store, &context.task_id, &before, &after);
+                Ok(ToolEffect::Result(result?))
             }
             Kind::Python => {
                 let input: PythonInput =
@@ -413,8 +497,11 @@ impl Tool for DevTool {
                     .map_err(|_| "脚本路径无效")?
                     .to_string_lossy()
                     .to_string();
+                let before = snapshot_workspace(&root);
                 let result = docker_run(&root, &format!("python {relative}")).await;
+                let after = snapshot_workspace(&root);
                 let _ = std::fs::remove_file(&script);
+                record_workspace_changes(&self.store, &context.task_id, &before, &after);
                 Ok(ToolEffect::Result(result?))
             }
         }

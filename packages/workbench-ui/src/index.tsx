@@ -1135,6 +1135,15 @@ export function Workbench() {
     .filter((event) => event.channel === 'text')
     .map((event) => event.delta ?? '')
     .join('');
+  // 计划已提交评审、或本轮已有最终 result 时，不再把流式快照叠在结果上。
+  const showStream = Boolean(
+    streamText &&
+    selected &&
+    isActiveTask(selected) &&
+    !selected.result &&
+    !mode?.pending_plan &&
+    !turns.at(-1)?.result,
+  );
   const backgroundTasks = tasks.filter(isActiveTask);
   const tokenTasks = turns.length > 0 ? turns : tasks;
   useEffect(() => {
@@ -1737,7 +1746,37 @@ export function Workbench() {
                     </Fragment>
                   );
                 })}
-                {streamText && isActiveTask(selected) && !selected?.result && (
+                {mode?.pending_plan && selectedId && (
+                  <div className="chat-row agent">
+                    <div className="plan-review-card">
+                      <div className="plan-review-card-head">
+                        <b>计划待评审</b>
+                        <span>批准后开始执行</span>
+                      </div>
+                      <pre>{mode.pending_plan}</pre>
+                      <div className="plan-review-actions">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void decidePlan(true).catch((cause) =>
+                              setInfo(cause instanceof Error ? cause.message : '计划批准失败'),
+                            )
+                          }
+                        >
+                          批准并执行
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={() => void decidePlan(false).catch(() => undefined)}
+                        >
+                          继续规划
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {showStream && selected && (
                   <div className="chat-row agent">
                     <div className="chat-bubble agent">
                       <pre>{streamText}</pre>
@@ -1745,25 +1784,29 @@ export function Workbench() {
                     </div>
                   </div>
                 )}
-                {selected && isActiveTask(selected) && !streamText && !selected.result && (
-                  <div className="chat-row agent">
-                    <div className="thinking-bubble" role="status" aria-live="polite">
-                      <LoaderCircle className="spin" size={13} />
-                      <span>
-                        {selected.status === 'queued'
-                          ? '等待执行'
-                          : selected.status === 'waiting_for_user'
-                            ? '等待确认'
-                            : selected.status === 'verifying'
-                              ? '校验中'
-                              : selected.status === 'planning'
-                                ? '规划中'
-                                : 'LLM 思考中'}{' '}
-                        · {thinkingSeconds}s
-                      </span>
+                {selected &&
+                  isActiveTask(selected) &&
+                  !showStream &&
+                  !selected.result &&
+                  !mode?.pending_plan && (
+                    <div className="chat-row agent">
+                      <div className="thinking-bubble" role="status" aria-live="polite">
+                        <LoaderCircle className="spin" size={13} />
+                        <span>
+                          {selected.status === 'queued'
+                            ? '等待执行'
+                            : selected.status === 'waiting_for_user'
+                              ? '等待确认'
+                              : selected.status === 'verifying'
+                                ? '校验中'
+                                : selected.status === 'planning'
+                                  ? '规划中'
+                                  : 'LLM 思考中'}{' '}
+                          · {thinkingSeconds}s
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
               </div>
               <div className="trajectory-panel">
                 {trajectoryHasOlder && (
@@ -2824,35 +2867,6 @@ export function Workbench() {
               <button onClick={() => void confirmWorkspaceChoice(false)}>选择项目文件夹</button>
               <button onClick={() => void confirmWorkspaceChoice(true)}>使用默认目录</button>
               <button onClick={() => setWorkspacePrompt(null)}>取消</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {mode?.pending_plan && selectedId && !workspacePrompt && (
-        <div
-          className="modal-backdrop"
-          onClick={() => void decidePlan(false).catch(() => undefined)}
-        >
-          <div
-            className="info-modal plan-review-modal"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <h2>计划评审</h2>
-            <p>模型提交了执行计划。批准后会在同一会话开始执行。</p>
-            <pre className="plan-preview">{mode.pending_plan}</pre>
-            <div className="workspace-actions">
-              <button
-                onClick={() =>
-                  void decidePlan(true).catch((cause) =>
-                    setInfo(cause instanceof Error ? cause.message : '计划批准失败'),
-                  )
-                }
-              >
-                批准并执行
-              </button>
-              <button onClick={() => void decidePlan(false).catch(() => undefined)}>
-                继续规划
-              </button>
             </div>
           </div>
         </div>
