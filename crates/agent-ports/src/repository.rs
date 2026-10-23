@@ -64,6 +64,21 @@ pub trait TaskRepository: Send + Sync {
     fn list(&self) -> Result<Vec<Task>, RepositoryError>;
     fn get(&self, id: &str) -> Result<Task, RepositoryError>;
     fn set_task_command(&self, id: &str, command: &str) -> Result<Task, RepositoryError>;
+    fn record_file_change(
+        &self,
+        task_id: &str,
+        session_id: &str,
+        path: &str,
+        old_text: &str,
+        new_text: &str,
+        change_type: &str,
+    ) -> Result<(), RepositoryError>;
+    fn task_file_changes(&self, task_id: &str) -> Result<Vec<serde_json::Value>, RepositoryError>;
+    fn task_file_diff(
+        &self,
+        task_id: &str,
+        path: &str,
+    ) -> Result<Option<serde_json::Value>, RepositoryError>;
     fn events(&self, id: &str) -> Result<Vec<TaskEvent>, RepositoryError>;
     fn advance(
         &self,

@@ -162,6 +162,8 @@ pub fn configured_router(state: AppState) -> Router {
         .route("/api/tasks/{id}/cancel", post(cancel_task))
         .route("/api/tasks/{id}/run", post(run_task))
         .route("/api/tasks/{id}/artifacts", get(task_artifacts))
+        .route("/api/tasks/{id}/file-changes", get(task_file_changes))
+        .route("/api/tasks/{id}/file-changes/diff", get(task_file_diff))
         .route("/api/tasks/{id}/attachments", get(task_attachments))
         .route("/api/tasks/{id}/tool-calls", get(task_tool_calls))
         .route(
@@ -1924,6 +1926,70 @@ async fn task_artifacts(
 ) -> Result<Json<Vec<Artifact>>, HttpError> {
     Ok(Json(database(move || state.store.artifacts(&id)).await?))
 }
+async fn task_workspace_root(
+    state: &AppState,
+    task_id: &str,
+) -> Result<std::path::PathBuf, HttpError> {
+    let store = state.store.clone();
+    let root = state.workspace_root.clone();
+    let task_id = task_id.to_owned();
+    database(move || {
+        let task = store.get(&task_id)?;
+        let workspace = match store.session_workspace(&task.conversation_id)? {
+            Some(workspace) => workspace,
+            None => crate::workspaces::ensure_default_workspace(
+                store.as_ref(),
+                &root,
+                &task.conversation_id,
+                &task.conversation_title,
+                false,
+            )?,
+        };
+        let path = workspace["path"].as_str().ok_or(RepositoryError::Backend)?;
+        std::fs::canonicalize(path).map_err(|_| RepositoryError::NotFound)
+    })
+    .await
+}
+
+async fn task_file_changes(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    let store = state.store.clone();
+    let changes_id = id.clone();
+    let mut changes = database(move || store.task_file_changes(&changes_id)).await?;
+    let root = task_workspace_root(&state, &id).await?;
+    for change in &mut changes {
+        if let Some(path) = change["path"].as_str() {
+            change["absolute_path"] =
+                serde_json::Value::String(root.join(path).to_string_lossy().to_string());
+        }
+    }
+    Ok(Json(serde_json::json!({"changes": changes})))
+}
+
+#[derive(Deserialize)]
+struct FileDiffQuery {
+    path: String,
+}
+
+async fn task_file_diff(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<FileDiffQuery>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    let store = state.store.clone();
+    let diff_id = id.clone();
+    let path = query.path.clone();
+    let Some(mut change) = database(move || store.task_file_diff(&diff_id, &path)).await? else {
+        return Err(HttpError(RepositoryError::NotFound));
+    };
+    let root = task_workspace_root(&state, &id).await?;
+    change["absolute_path"] =
+        serde_json::Value::String(root.join(&query.path).to_string_lossy().to_string());
+    Ok(Json(serde_json::json!({"change": change})))
+}
+
 async fn download_artifact(
     State(state): State<AppState>,
     Path(id): Path<String>,

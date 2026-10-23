@@ -313,7 +313,21 @@ impl Tool for DevTool {
                     return Err("内容超过 2MB".into());
                 }
                 let path = writable_file(&root, &input.path)?;
+                let existed = path.exists();
+                let old_text = std::fs::read_to_string(&path).ok();
                 std::fs::write(&path, input.content.as_bytes()).map_err(|_| "写入文件失败")?;
+                if (!existed || old_text.is_some())
+                    && let Ok(task) = self.store.get(&context.task_id)
+                {
+                    let _ = self.store.record_file_change(
+                        &context.task_id,
+                        &task.conversation_id,
+                        input.path.trim(),
+                        old_text.as_deref().unwrap_or(""),
+                        &input.content,
+                        if existed { "modify" } else { "create" },
+                    );
+                }
                 Ok(ToolEffect::Result(
                     json!({"path": input.path, "bytes": input.content.len()}),
                 ))
@@ -336,6 +350,16 @@ impl Tool for DevTool {
                     text.replacen(&input.old, &input.new, 1)
                 };
                 std::fs::write(&path, updated.as_bytes()).map_err(|_| "写入文件失败")?;
+                if let Ok(task) = self.store.get(&context.task_id) {
+                    let _ = self.store.record_file_change(
+                        &context.task_id,
+                        &task.conversation_id,
+                        input.path.trim(),
+                        &text,
+                        &updated,
+                        "modify",
+                    );
+                }
                 Ok(ToolEffect::Result(
                     json!({"path": input.path, "replacements": if input.replace_all { count } else { 1 }}),
                 ))

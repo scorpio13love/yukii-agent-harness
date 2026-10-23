@@ -14,6 +14,7 @@ import {
   LayoutGrid,
   LoaderCircle,
   Monitor,
+  MousePointer2,
   PanelLeft,
   PanelRight,
   Paperclip,
@@ -32,6 +33,8 @@ import {
 import {
   httpApi,
   type CuaApproval,
+  type FileChange,
+  type FileDiff,
   type SessionMode,
   type Task,
   type TrajectoryRecord,
@@ -394,6 +397,93 @@ function PlanDock({ mode, onExit }: { mode: SessionMode; onExit: () => void }) {
   );
 }
 
+function FileChangesCard({
+  changes,
+  onOpen,
+}: {
+  changes: FileChange[];
+  onOpen: (path: string) => void;
+}) {
+  if (changes.length === 0) return null;
+  return (
+    <div className="file-changes-card">
+      <div className="file-changes-head">
+        <FileText size={14} />
+        已编辑 {changes.length} 个文件
+      </div>
+      <div className="file-changes-list">
+        {changes.map((change) => (
+          <button
+            type="button"
+            key={change.path}
+            title={change.absolute_path}
+            onClick={() => onOpen(change.path)}
+          >
+            <span>{change.path.split('/').at(-1) ?? change.path}</span>
+            <small>
+              <i>+{change.added}</i>
+              <em>−{change.removed}</em>
+            </small>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FileDiffPanel({
+  diff,
+  onClose,
+  onOpenInCursor,
+}: {
+  diff: FileDiff;
+  onClose: () => void;
+  onOpenInCursor: (path: string) => void;
+}) {
+  return (
+    <div className="diff-inspector" role="dialog" aria-label="文件差异">
+      <header>
+        <div className="diff-inspector-title">
+          <b>{diff.path}</b>
+          <small>
+            <i>+{diff.added}</i> <em>−{diff.removed}</em>
+          </small>
+        </div>
+        <div className="diff-inspector-actions">
+          <button
+            type="button"
+            className="diff-cursor-button"
+            title="在 Cursor 中打开"
+            aria-label="在 Cursor 中打开"
+            onClick={() => onOpenInCursor(diff.absolute_path)}
+          >
+            <MousePointer2 size={16} />
+          </button>
+          <button type="button" aria-label="关闭差异" title="关闭" onClick={onClose}>
+            <X size={17} />
+          </button>
+        </div>
+      </header>
+      <div className="diff-scroll">
+        {diff.lines.length === 0 ? (
+          <p className="diff-empty">没有可显示的差异。</p>
+        ) : (
+          diff.lines.map((line, index) => (
+            <div className={`diff-line ${line.kind}`} key={`${index}-${line.kind}`}>
+              <span>{line.old_line ?? ''}</span>
+              <span>{line.new_line ?? ''}</span>
+              <code>
+                {line.kind === 'added' ? '+' : line.kind === 'removed' ? '-' : ' '}
+                {line.text}
+              </code>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function Workbench() {
   const {
     tasks,
@@ -414,6 +504,7 @@ export function Workbench() {
     workspace,
     workspaces,
     mode,
+    fileChanges,
     setPlanMode,
     decidePlan,
     updateGoal,
@@ -457,8 +548,10 @@ export function Workbench() {
     ? SLASH_COMMANDS.filter((item) => item.command.startsWith(slashInput))
     : [];
   const [detailsOpen, setDetailsOpen] = useState(true);
+  const [fileDiff, setFileDiff] = useState<FileDiff | null>(null);
   useEffect(() => {
     setComposerCommand(null);
+    setFileDiff(null);
   }, [selectedId]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [info, setInfo] = useState<string | null>(null);
@@ -478,6 +571,16 @@ export function Workbench() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [attachMenu, setAttachMenu] = useState(false);
+  useEffect(() => {
+    if (!attachMenu) return;
+    const close = (event: PointerEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest('.attach-menu') || target.closest('.attach-toggle')) return;
+      setAttachMenu(false);
+    };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [attachMenu]);
   const [view, setView] = useState<'chat' | 'trajectory'>('chat');
   const [backgroundOpen, setBackgroundOpen] = useState(false);
   const [statusPanel, setStatusPanel] = useState<'runs' | 'tokens' | 'context' | null>(null);
@@ -611,6 +714,30 @@ export function Workbench() {
   function clearEditor() {
     if (editor.current) editor.current.innerHTML = '';
     setPrompt('');
+  }
+
+  async function openFileDiff(taskId: string, path: string) {
+    try {
+      const result = await httpApi.taskFileDiff(taskId, path);
+      setFileDiff(result.change);
+    } catch (cause) {
+      setInfo(cause instanceof Error ? cause.message : '无法读取文件差异');
+    }
+  }
+
+  function openInCursor(path: string) {
+    const desktop = (
+      window as Window & {
+        yukiiDesktop?: { openInCursor?: (target: string) => Promise<string | null> };
+      }
+    ).yukiiDesktop;
+    if (!desktop?.openInCursor) {
+      setInfo('在 Cursor 中打开仅支持桌面版。');
+      return;
+    }
+    void desktop.openInCursor(path).then((error) => {
+      if (error) setInfo(error);
+    });
   }
 
   function applySlashCommand(insert: string) {
@@ -1346,6 +1473,14 @@ export function Workbench() {
                           </div>
                         </div>
                       )}
+                      {(fileChanges[turn.id]?.length ?? 0) > 0 && (
+                        <div className="chat-row agent">
+                          <FileChangesCard
+                            changes={fileChanges[turn.id]}
+                            onOpen={(path) => void openFileDiff(turn.id, path)}
+                          />
+                        </div>
+                      )}
                     </Fragment>
                   );
                 })}
@@ -1877,23 +2012,24 @@ export function Workbench() {
                 <div>
                   <button
                     type="button"
-                    className="slash-trigger"
-                    aria-label="斜杠命令"
-                    title="斜杠命令"
-                    onClick={() => applySlashCommand('/')}
-                  >
-                    /
-                  </button>
-                  <button
-                    type="button"
-                    className="icon-button"
-                    aria-label="添加文件或知识库"
+                    className="icon-button attach-toggle"
+                    aria-label="添加文件、命令或知识库"
                     onClick={() => setAttachMenu((open) => !open)}
                   >
                     <Plus size={21} />
                   </button>
                   {attachMenu && (
                     <div className="attach-menu" role="menu">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAttachMenu(false);
+                          applySlashCommand('/');
+                        }}
+                      >
+                        <span className="attach-command-icon">/</span>
+                        命令
+                      </button>
                       <button
                         type="button"
                         onClick={() => {
@@ -2400,6 +2536,13 @@ export function Workbench() {
         </div>
       )}
       {officePanel && <OfficePanel section={officePanel} onClose={() => setOfficePanel(null)} />}
+      {fileDiff && (
+        <FileDiffPanel
+          diff={fileDiff}
+          onClose={() => setFileDiff(null)}
+          onOpenInCursor={openInCursor}
+        />
+      )}
       {workspacePrompt && (
         <div className="modal-backdrop" onClick={() => setWorkspacePrompt(null)}>
           <div className="info-modal" onClick={(event) => event.stopPropagation()}>

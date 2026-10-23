@@ -1,4 +1,5 @@
 //! SQLite 单实例存储。任务状态与事件使用同一事务提交，避免双写不一致。
+use crate::file_diff::line_diff;
 use rusqlite::{Connection, OptionalExtension, params};
 use std::{
     path::Path,
@@ -1307,6 +1308,10 @@ impl TaskStore {
             [session_id],
         )?;
         transaction.execute(
+            "DELETE FROM task_file_changes WHERE session_id=?1",
+            [session_id],
+        )?;
+        transaction.execute(
             "DELETE FROM session_outbox WHERE session_id=?1",
             [session_id],
         )?;
@@ -1379,6 +1384,92 @@ impl TaskStore {
             [session_id],
         )?;
         Ok(())
+    }
+
+    pub fn record_file_change(
+        &self,
+        task_id: &str,
+        session_id: &str,
+        path: &str,
+        old_text: &str,
+        new_text: &str,
+        change_type: &str,
+    ) -> Result<(), StoreError> {
+        if old_text == new_text {
+            return Ok(());
+        }
+        let connection = self.connection.lock().map_err(|_| StoreError::Lock)?;
+        let existing: Option<String> = connection
+            .query_row(
+                "SELECT old_text FROM task_file_changes WHERE task_id=?1 AND path=?2",
+                params![task_id, path],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let baseline = existing.unwrap_or_else(|| old_text.to_owned());
+        let (lines, added, removed) = line_diff(&baseline, new_text);
+        let diff = serde_json::to_string(&lines)?;
+        connection.execute(
+            "INSERT INTO task_file_changes(task_id,session_id,path,old_text,new_text,diff,added,removed,change_type,updated_at)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
+             ON CONFLICT(task_id,path) DO UPDATE SET new_text=excluded.new_text,diff=excluded.diff,added=excluded.added,removed=excluded.removed,updated_at=excluded.updated_at",
+            params![
+                task_id,
+                session_id,
+                path,
+                baseline,
+                new_text,
+                diff,
+                added as i64,
+                removed as i64,
+                change_type,
+                now()
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn task_file_changes(&self, task_id: &str) -> Result<Vec<serde_json::Value>, StoreError> {
+        let connection = self.connection.lock().map_err(|_| StoreError::Lock)?;
+        let mut statement = connection.prepare(
+            "SELECT path,added,removed,change_type,updated_at FROM task_file_changes WHERE task_id=?1 ORDER BY updated_at,path",
+        )?;
+        let rows = statement.query_map([task_id], |row| {
+            Ok(serde_json::json!({
+                "path": row.get::<_, String>(0)?,
+                "added": row.get::<_, i64>(1)?,
+                "removed": row.get::<_, i64>(2)?,
+                "change_type": row.get::<_, String>(3)?,
+                "updated_at": row.get::<_, i64>(4)?,
+            }))
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn task_file_diff(
+        &self,
+        task_id: &str,
+        path: &str,
+    ) -> Result<Option<serde_json::Value>, StoreError> {
+        let connection = self.connection.lock().map_err(|_| StoreError::Lock)?;
+        let row = connection
+            .query_row(
+                "SELECT path,added,removed,change_type,diff,updated_at FROM task_file_changes WHERE task_id=?1 AND path=?2",
+                params![task_id, path],
+                |row| {
+                    let diff: String = row.get(4)?;
+                    Ok(serde_json::json!({
+                        "path": row.get::<_, String>(0)?,
+                        "added": row.get::<_, i64>(1)?,
+                        "removed": row.get::<_, i64>(2)?,
+                        "change_type": row.get::<_, String>(3)?,
+                        "lines": serde_json::from_str::<serde_json::Value>(&diff).unwrap_or_else(|_| serde_json::json!([])),
+                        "updated_at": row.get::<_, i64>(5)?,
+                    }))
+                },
+            )
+            .optional()?;
+        Ok(row)
     }
 
     pub fn session_mode(&self, session_id: &str) -> Result<Option<serde_json::Value>, StoreError> {

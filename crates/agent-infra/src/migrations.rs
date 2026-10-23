@@ -43,6 +43,7 @@ pub(crate) fn apply(connection: &mut Connection) -> Result<(), StoreError> {
         include_str!("../migrations/0028_session_modes.sql"),
         include_str!("../migrations/0029_pending_plan.sql"),
         include_str!("../migrations/0030_plan_steps.sql"),
+        include_str!("../migrations/0031_task_file_changes.sql"),
     ];
     if version > migrations.len() as i64 {
         return Err(StoreError::SchemaTooNew);

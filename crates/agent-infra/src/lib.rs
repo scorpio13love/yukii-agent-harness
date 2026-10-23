@@ -3,6 +3,7 @@ mod desktop_receipts;
 mod instance;
 pub use desktop_receipts::DesktopReceipt;
 mod computer;
+mod file_diff;
 mod invocations;
 mod knowledge;
 mod migrations;
@@ -55,6 +56,36 @@ impl TaskRepository for TaskStore {
     }
     fn set_task_command(&self, id: &str, command: &str) -> Result<Task, RepositoryError> {
         TaskStore::set_task_command(self, id, command).map_err(Into::into)
+    }
+    fn record_file_change(
+        &self,
+        task_id: &str,
+        session_id: &str,
+        path: &str,
+        old_text: &str,
+        new_text: &str,
+        change_type: &str,
+    ) -> Result<(), RepositoryError> {
+        TaskStore::record_file_change(
+            self,
+            task_id,
+            session_id,
+            path,
+            old_text,
+            new_text,
+            change_type,
+        )
+        .map_err(Into::into)
+    }
+    fn task_file_changes(&self, task_id: &str) -> Result<Vec<serde_json::Value>, RepositoryError> {
+        TaskStore::task_file_changes(self, task_id).map_err(Into::into)
+    }
+    fn task_file_diff(
+        &self,
+        task_id: &str,
+        path: &str,
+    ) -> Result<Option<serde_json::Value>, RepositoryError> {
+        TaskStore::task_file_diff(self, task_id, path).map_err(Into::into)
     }
     fn events(&self, id: &str) -> Result<Vec<TaskEvent>, RepositoryError> {
         TaskStore::events(self, id).map_err(Into::into)

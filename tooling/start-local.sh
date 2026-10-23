@@ -28,7 +28,7 @@ fi
 
 pnpm install
 pnpm build
-./tooling/cargo.sh build -p yukii-api-server -p yukii-cua-sidecar
+./tooling/cargo.sh build -p yukii-api-server -p yukii-cua-sidecar -p yukii-desktop-executor-service
 
 cleanup() {
   [ -n "${API_PID:-}" ] && kill "$API_PID" 2>/dev/null || true

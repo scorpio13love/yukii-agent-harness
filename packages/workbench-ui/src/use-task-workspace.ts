@@ -3,6 +3,7 @@ import {
   httpApi,
   parseTaskEvent,
   type Artifact,
+  type FileChange,
   type Capabilities,
   type Memory,
   type Schedule,
@@ -34,6 +35,7 @@ export function useTaskWorkspace() {
   const [workspace, setWorkspace] = useState<SessionWorkspace | null>(null);
   const [workspaces, setWorkspaces] = useState<Record<string, SessionWorkspace>>({});
   const [mode, setMode] = useState<SessionMode | null>(null);
+  const [fileChanges, setFileChanges] = useState<Record<string, FileChange[]>>({});
   const [reloadToken, setReloadToken] = useState(0);
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
   const [selectedId, selectId] = useState<string | null>(null);
@@ -126,6 +128,7 @@ export function useTaskWorkspace() {
     setArtifacts([]);
     setTaskAttachments({});
     setMode(null);
+    setFileChanges({});
     // 附件只属于当前 composer 草稿；不要把历史会话的附件重新塞进输入框。
     setAttachments([]);
   }, [selectedId]);
@@ -150,6 +153,7 @@ export function useTaskWorkspace() {
           nextSubagents,
           nextWorkspace,
           nextMode,
+          fileChangeGroups,
         ] = await Promise.all([
           Promise.all(history.map((turn) => api.events(turn.id))),
           Promise.all(history.map((turn) => api.artifacts(turn.id))),
@@ -159,6 +163,9 @@ export function useTaskWorkspace() {
           api.subagents(task.id),
           api.sessionWorkspace(id),
           api.sessionMode(id),
+          Promise.all(
+            history.map((turn) => api.taskFileChanges(turn.id).catch(() => ({ changes: [] }))),
+          ),
         ]);
         const nextArtifacts = artifactGroups.flat();
         if (!active) return;
@@ -179,6 +186,11 @@ export function useTaskWorkspace() {
         setSubagents(nextSubagents.subagents);
         setWorkspace(nextWorkspace.workspace);
         setMode(nextMode.mode);
+        setFileChanges(
+          Object.fromEntries(
+            history.map((turn, index) => [turn.id, fileChangeGroups[index].changes]),
+          ),
+        );
         if (nextWorkspace.workspace) {
           const current = nextWorkspace.workspace;
           setWorkspaces((previous) => ({ ...previous, [id]: current }));
@@ -495,6 +507,7 @@ export function useTaskWorkspace() {
     workspace,
     workspaces,
     mode,
+    fileChanges,
     deleteSession,
     forkSession,
     setWorkspace: updateWorkspace,

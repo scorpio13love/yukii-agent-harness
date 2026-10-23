@@ -408,6 +408,25 @@ ipcMain.handle('workspace:open', async (_event, target) => {
   return error || null;
 });
 
+ipcMain.handle('workspace:open-in-cursor', async (_event, target) => {
+  const path = String(target ?? '').trim();
+  if (!path) return '文件路径为空';
+  if (process.platform === 'darwin') {
+    return await new Promise((resolve) => {
+      const child = spawn('open', ['-a', 'Cursor', path], { stdio: 'ignore' });
+      child.on('error', () => resolve('无法启动 Cursor，请确认已安装。'));
+      child.on('exit', (code) => resolve(code === 0 ? null : '无法启动 Cursor，请确认已安装。'));
+    });
+  }
+  try {
+    const child = spawn('cursor', [path], { detached: true, stdio: 'ignore' });
+    child.unref();
+    return null;
+  } catch {
+    return '无法启动 Cursor，请确认 cursor 命令在 PATH 中。';
+  }
+});
+
 app.whenReady().then(async () => {
   await ensureApiServer();
   setInterval(() => void watchScheduleReminders(), 5000);

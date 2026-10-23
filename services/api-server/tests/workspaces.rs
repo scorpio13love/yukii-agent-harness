@@ -243,6 +243,7 @@ async fn goal_and_plan_modes_are_persisted_for_a_new_session() {
     assert_eq!(store.conversation(&task.conversation_id).unwrap().len(), 2);
 
     let response = app
+        .clone()
         .oneshot(
             Request::post(format!("/api/sessions/{}/plan", task.conversation_id))
                 .header("host", "localhost:8765")
@@ -255,6 +256,36 @@ async fn goal_and_plan_modes_are_persisted_for_a_new_session() {
     assert_eq!(response.status(), StatusCode::OK);
     let mode = store.session_mode(&task.conversation_id).unwrap().unwrap();
     assert!(mode["plan_steps"].as_array().unwrap().is_empty());
+
+    store
+        .record_file_change(
+            &task.id,
+            &task.conversation_id,
+            "note.txt",
+            "old\n",
+            "new\n",
+            "modify",
+        )
+        .unwrap();
+    let response = app
+        .oneshot(
+            Request::get(format!("/api/tasks/{}/file-changes", task.id))
+                .header("host", "localhost:8765")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 65536).await.unwrap()).unwrap();
+    assert_eq!(body["changes"][0]["path"], "note.txt");
+    assert!(
+        body["changes"][0]["absolute_path"]
+            .as_str()
+            .unwrap()
+            .ends_with("note.txt")
+    );
 
     let _ = std::fs::remove_dir_all(root);
 }

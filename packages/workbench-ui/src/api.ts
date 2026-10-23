@@ -121,6 +121,34 @@ const sessionModeRecordSchema = z.object({
 const sessionModeSchema = sessionModeRecordSchema.nullable();
 
 export type SessionMode = z.infer<typeof sessionModeRecordSchema>;
+const fileChangeSchema = z.object({
+  path: z.string(),
+  absolute_path: z.string(),
+  added: z.number(),
+  removed: z.number(),
+  change_type: z.string(),
+  updated_at: z.number(),
+});
+
+const fileDiffLineSchema = z.object({
+  kind: z.enum(['context', 'added', 'removed']),
+  text: z.string(),
+  old_line: z.number().nullable(),
+  new_line: z.number().nullable(),
+});
+
+const fileDiffSchema = z.object({
+  path: z.string(),
+  absolute_path: z.string(),
+  added: z.number(),
+  removed: z.number(),
+  change_type: z.string(),
+  lines: z.array(fileDiffLineSchema),
+  updated_at: z.number(),
+});
+
+export type FileChange = z.infer<typeof fileChangeSchema>;
+export type FileDiff = z.infer<typeof fileDiffSchema>;
 
 const memorySchema = z.object({
   id: z.string(),
@@ -314,6 +342,16 @@ export const httpApi = {
     request(`/tasks/${encodeURIComponent(id)}/attachments`, z.array(taskAttachmentSchema)),
   taskToolCalls: (id: string) =>
     request(`/tasks/${encodeURIComponent(id)}/tool-calls`, z.array(toolCallSchema)),
+  taskFileChanges: (id: string) =>
+    request(
+      `/tasks/${encodeURIComponent(id)}/file-changes`,
+      z.object({ changes: z.array(fileChangeSchema) }),
+    ),
+  taskFileDiff: (id: string, path: string) =>
+    request(
+      `/tasks/${encodeURIComponent(id)}/file-changes/diff?path=${encodeURIComponent(path)}`,
+      z.object({ change: fileDiffSchema }),
+    ),
   compactConversation: (conversationId: string) =>
     request(`/sessions/${encodeURIComponent(conversationId)}/compact`, z.object({}).passthrough(), {
       method: 'POST',
@@ -497,6 +535,18 @@ export function localApi(): typeof httpApi | null {
     artifacts: async () => [],
     taskAttachments: async () => [],
     taskToolCalls: async () => [],
+    taskFileChanges: async () => ({ changes: [] }),
+    taskFileDiff: async (_id: string, path: string) => ({
+      change: {
+        path,
+        absolute_path: path,
+        added: 0,
+        removed: 0,
+        change_type: 'modify',
+        lines: [],
+        updated_at: 0,
+      },
+    }),
     compactConversation: async (_id: string) => ({}),
     cuaApprovals: async () => ({ approvals: [] }),
     decideCuaApproval: async (id: string, allowed: boolean) => ({ id, allowed }),
