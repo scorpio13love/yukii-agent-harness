@@ -65,6 +65,7 @@ async fn cdp_ready(client: &reqwest::Client) -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(target_os = "macos")]
 fn headless_enabled() -> bool {
     !matches!(
         std::env::var("YUKII_BROWSER_HEADLESS")
