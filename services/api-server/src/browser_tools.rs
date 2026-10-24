@@ -65,7 +65,18 @@ async fn cdp_ready(client: &reqwest::Client) -> bool {
         .unwrap_or(false)
 }
 
-/// 启动独立的 Chrome 自动化 profile；不碰用户现有 Chrome 配置。
+fn headless_enabled() -> bool {
+    !matches!(
+        std::env::var("YUKII_BROWSER_HEADLESS")
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase()
+            .as_str(),
+        "0" | "false" | "no" | "off"
+    )
+}
+
+/// 启动独立的 Chrome 自动化 profile；默认无头，不碰用户现有 Chrome 配置。
 fn launch_automation_chrome() -> Result<(), String> {
     let data_dir = std::env::current_dir()
         .map_err(|_| "无法定位工作目录")?
@@ -79,18 +90,23 @@ fn launch_automation_chrome() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         let chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-        std::process::Command::new(chrome)
-            .args([
-                &format!("--remote-debugging-port={port}"),
-                "--remote-allow-origins=*",
-                &format!("--user-data-dir={}", data_dir.to_string_lossy()),
-                "--no-first-run",
-                "--no-default-browser-check",
-                "--no-sandbox",
-                "--disable-gpu",
-                "--disable-crash-reporter",
-                "about:blank",
-            ])
+        let mut command = std::process::Command::new(chrome);
+        command.args([
+            &format!("--remote-debugging-port={port}"),
+            "--remote-allow-origins=*",
+            &format!("--user-data-dir={}", data_dir.to_string_lossy()),
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--no-sandbox",
+            "--disable-gpu",
+            "--disable-crash-reporter",
+            "--hide-scrollbars",
+        ]);
+        if headless_enabled() {
+            command.args(["--headless=new", "--window-size=1440,900"]);
+        }
+        command
+            .arg("about:blank")
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
@@ -166,7 +182,15 @@ impl Cdp {
         let (socket, _) = connect_async(ws)
             .await
             .map_err(|_| "无法连接 Chrome DevTools")?;
-        Ok(Self { socket, next_id: 0 })
+        let mut client = Self { socket, next_id: 0 };
+        // 固定视口，保证 browser_screenshot 和页面文本在无头/有头模式下一致。
+        let _ = client
+            .call(
+                "Emulation.setDeviceMetricsOverride",
+                json!({"width":1440,"height":900,"deviceScaleFactor":1,"mobile":false}),
+            )
+            .await;
+        Ok(client)
     }
 
     async fn call(&mut self, method: &str, params: Value) -> Result<Value, String> {

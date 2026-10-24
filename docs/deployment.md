@@ -164,6 +164,8 @@ echo '{"operation":"permissions"}' | target/native/computer-bridge
 
 浏览器工具通过 CDP 操作专用 Chrome profile 或显式 CDP 端点。
 
+- 默认使用无头 Chrome（`.data/chrome-automation` profile），不会打开可见窗口；
+- 需要调试时设置 `YUKII_BROWSER_HEADLESS=false`，才会显示自动化窗口；
 - 页面内容是不可信数据；
 - 不要用它访问网银、邮箱或输入密码/验证码；
 - 只操作当前 page target，弹窗/下载/文件选择器未完全处理。
